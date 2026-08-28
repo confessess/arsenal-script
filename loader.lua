@@ -1,5 +1,6 @@
---// ArsenalKit Loader v5 - Clean & Simple
+--// ArsenalKit Loader v6 - Clean, Cache-Busted, Working
 local BASE_URL = "https://raw.githubusercontent.com/confessess/arsenal-script/main"
+local CACHE_BUST = "?t=" .. tostring(tick())
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -11,9 +12,9 @@ local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
 --// Colors
 local Colors = {
-    BG = Color3.fromRGB(20, 25, 35),
-    Surface = Color3.fromRGB(30, 38, 52),
-    SurfaceHover = Color3.fromRGB(40, 52, 72),
+    BG = Color3.fromRGB(22, 26, 36),
+    Surface = Color3.fromRGB(32, 38, 52),
+    SurfaceHover = Color3.fromRGB(42, 50, 68),
     Accent = Color3.fromRGB(0, 170, 255),
     AccentDark = Color3.fromRGB(0, 130, 200),
     Text = Color3.fromRGB(240, 245, 255),
@@ -38,9 +39,9 @@ for _, gui in ipairs(PlayerGui:GetChildren()) do
     if gui.Name == "ArsenalKit" then gui:Destroy() end
 end
 
---// Fetch
+--// Fetch with cache busting
 local function FetchModule(name)
-    local url = BASE_URL .. "/modules/" .. name .. ".lua"
+    local url = BASE_URL .. "/modules/" .. name .. ".lua" .. CACHE_BUST
     local ok, result = pcall(function() return game:HttpGet(url, true) end)
     if ok and result and #result > 50 then return result end
     warn("[ArsenalKit] Failed: " .. name)
@@ -67,11 +68,10 @@ ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.DisplayOrder = 999999
 ScreenGui.Parent = PlayerGui
 
--- Main container
 local Main = Instance.new("Frame")
 Main.Name = "Main"
-Main.Size = UDim2.new(0, 520, 0, 340)
-Main.Position = UDim2.new(0.5, -260, 0.5, -170)
+Main.Size = UDim2.new(0, 540, 0, 360)
+Main.Position = UDim2.new(0.5, -270, 0.5, -180)
 Main.BackgroundColor3 = Colors.BG
 Main.BorderSizePixel = 0
 Main.Parent = ScreenGui
@@ -103,7 +103,7 @@ TitleBar.Parent = Main
 Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, 8)
 
 local TitleText = Instance.new("TextLabel")
-TitleText.Text = "ARSENAL KIT  v5"
+TitleText.Text = "ARSENAL KIT  v6"
 TitleText.Size = UDim2.new(1, -80, 1, 0)
 TitleText.Position = UDim2.new(0, 14, 0, 0)
 TitleText.BackgroundTransparency = 1
@@ -146,7 +146,7 @@ end)
 
 -- Sidebar
 local Sidebar = Instance.new("Frame")
-Sidebar.Size = UDim2.new(0, 125, 1, -36)
+Sidebar.Size = UDim2.new(0, 130, 1, -36)
 Sidebar.Position = UDim2.new(0, 0, 0, 36)
 Sidebar.BackgroundColor3 = Colors.Surface
 Sidebar.BorderSizePixel = 0
@@ -168,8 +168,8 @@ TabPadding.Parent = Sidebar
 
 -- Content
 local Content = Instance.new("Frame")
-Content.Size = UDim2.new(1, -125, 1, -36)
-Content.Position = UDim2.new(0, 125, 0, 36)
+Content.Size = UDim2.new(1, -130, 1, -36)
+Content.Position = UDim2.new(0, 130, 0, 36)
 Content.BackgroundTransparency = 1
 Content.BorderSizePixel = 0
 Content.ZIndex = 2
@@ -461,7 +461,6 @@ function ArsenalKit:CreateDropdown(parent, label, options, default, callback)
 
     Instance.new("UICorner", Selected).CornerRadius = UDim.new(0, 4)
 
-    -- Overlay for dropdown options (parented to ScreenGui)
     local DropdownOverlay = Instance.new("Frame")
     DropdownOverlay.Name = "DropdownOverlay_" .. label
     DropdownOverlay.Size = UDim2.new(0, 100, 0, 0)
@@ -717,4 +716,4 @@ task.delay(2, function()
     end
 end)
 
-print("[ArsenalKit] v5 loaded. RightShift to toggle.")
+print("[ArsenalKit] v6 loaded. RightShift to toggle.")

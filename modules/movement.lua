@@ -1,5 +1,5 @@
---// ArsenalKit Module: Movement v3
---// Features: Speed, Bunny Hop, Infinite Jump, Fly, No Clip - all with keybinds
+--// ArsenalKit Module: Movement v6
+--// Fixed fly - only activates when toggled, proper cleanup
 
 local ArsenalKit = _G.ArsenalKit
 local Players = game:GetService("Players")
@@ -31,11 +31,24 @@ local Settings = {
 }
 
 --// State
-local IsFlying = false
-local FlyBodyVelocity = nil
-local FlyBodyGyro = nil
-local AutoFireConnection = nil
+local FlyConnection = nil
 local SpeedConnection = nil
+local LastTool = nil
+
+--// Cleanup any existing body movers on load
+local function CleanupBodyMovers()
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    for _, child in ipairs(hrp:GetChildren()) do
+        if child:IsA("BodyVelocity") or child:IsA("BodyGyro") or child:IsA("AlignOrientation") or child:IsA("VectorForce") then
+            child:Destroy()
+        end
+    end
+end
+
+CleanupBodyMovers()
 
 --// Speed Hack
 local function StartSpeedHack()
@@ -45,7 +58,6 @@ local function StartSpeedHack()
         if not char then return end
         local humanoid = char:FindFirstChildOfClass("Humanoid")
         if not humanoid then return end
-
         if Settings.SpeedHack then
             humanoid.WalkSpeed = 16 * Settings.SpeedMult
         else
@@ -54,48 +66,21 @@ local function StartSpeedHack()
     end)
 end
 
---// Fly System
-local function StartFly()
-    if IsFlying then return end
-    IsFlying = true
+StartSpeedHack()
 
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-
-    FlyBodyGyro = Instance.new("BodyGyro")
-    FlyBodyGyro.P = 9e4
-    FlyBodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-    FlyBodyGyro.CFrame = hrp.CFrame
-    FlyBodyGyro.Parent = hrp
-
-    FlyBodyVelocity = Instance.new("BodyVelocity")
-    FlyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
-    FlyBodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-    FlyBodyVelocity.Parent = hrp
-end
-
-local function StopFly()
-    if not IsFlying then return end
-    IsFlying = false
-
-    if FlyBodyGyro then
-        FlyBodyGyro:Destroy()
-        FlyBodyGyro = nil
-    end
-    if FlyBodyVelocity then
-        FlyBodyVelocity:Destroy()
-        FlyBodyVelocity = nil
-    end
-end
-
-RunService.RenderStepped:Connect(function()
-    if IsFlying and FlyBodyVelocity and FlyBodyGyro then
+--// Fly System - Using Velocity directly (no legacy body movers)
+local function StartFlyLoop()
+    if FlyConnection then return end
+    FlyConnection = RunService.RenderStepped:Connect(function()
+        if not Settings.Fly then return end
         local char = LocalPlayer.Character
         if not char then return end
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.PlatformStand = true
+        end
 
         local cam = Workspace.CurrentCamera
         local moveDir = Vector3.new(0, 0, 0)
@@ -123,10 +108,27 @@ RunService.RenderStepped:Connect(function()
             moveDir = moveDir.Unit * Settings.FlySpeed
         end
 
-        FlyBodyVelocity.Velocity = moveDir
-        FlyBodyGyro.CFrame = cam.CFrame
+        hrp.Velocity = moveDir
+        hrp.RotVelocity = Vector3.new(0, 0, 0)
+    end)
+end
+
+local function StopFly()
+    Settings.Fly = false
+    local char = LocalPlayer.Character
+    if char then
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            hrp.Velocity = Vector3.new(0, 0, 0)
+        end
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.PlatformStand = false
+        end
     end
-end)
+end
+
+StartFlyLoop()
 
 --// Bunny Hop
 RunService.Heartbeat:Connect(function()
@@ -167,9 +169,6 @@ RunService.Heartbeat:Connect(function()
         end
     end
 end)
-
---// Start speed hack loop
-StartSpeedHack()
 
 --// Build UI
 local Tab = ArsenalKit:CreateTab("Movement", "M")
@@ -216,15 +215,19 @@ end)
 
 ArsenalKit:CreateSection(Tab, "Flight")
 
-ArsenalKit:CreateToggle(Tab, "Fly (WASD + Space/Shift)", false, function(v)
+ArsenalKit:CreateToggle(Tab, "Fly", false, function(v)
     Settings.Fly = v
-    if v then StartFly() else StopFly() end
+    if not v then
+        StopFly()
+    end
 end)
 
 ArsenalKit:CreateKeybind(Tab, "Fly Key", Settings.FlyKey, function(key, pressed)
     if pressed then
         Settings.Fly = not Settings.Fly
-        if Settings.Fly then StartFly() else StopFly() end
+        if not Settings.Fly then
+            StopFly()
+        end
     else
         Settings.FlyKey = key
     end
@@ -248,4 +251,4 @@ ArsenalKit:CreateKeybind(Tab, "NoClip Key", Settings.NoClipKey, function(key, pr
     end
 end)
 
-print("[ArsenalKit] Movement v3 loaded")
+print("[ArsenalKit] Movement v6 loaded")

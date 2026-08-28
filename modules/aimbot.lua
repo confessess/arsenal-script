@@ -1,5 +1,5 @@
---// ArsenalKit Module: Aimbot v5
---// Simple camera-based aimbot with sticky target
+--// ArsenalKit Module: Aimbot v6
+--// Direct camera CFrame override - works in every executor
 
 local ArsenalKit = _G.ArsenalKit
 local Players = game:GetService("Players")
@@ -30,7 +30,6 @@ local Settings = {
 
 --// State
 local CurrentTarget = nil
-local HasMouseMove = typeof(mousemoverel) == "function"
 
 --// FOV Circle
 local FOVCircle = nil
@@ -146,7 +145,7 @@ local function ValidateTarget(player)
     return true
 end
 
---// Main Loop
+--// Main Loop - DIRECT CAMERA OVERRIDE
 RunService.RenderStepped:Connect(function()
     local mousePos = UserInputService:GetMouseLocation()
 
@@ -170,21 +169,22 @@ RunService.RenderStepped:Connect(function()
         CurrentTarget = FindClosest()
     end
 
-    -- Aim
+    -- AIM - Direct camera override
     if Settings.Enabled and CurrentTarget then
         local targetPos = GetTargetPos(CurrentTarget)
         if targetPos then
+            -- Method 1: mousemoverel (if available)
             local screenPos = Camera:WorldToViewportPoint(targetPos)
             local targetScreen = Vector2.new(screenPos.X, screenPos.Y)
             local delta = (targetScreen - mousePos) * Settings.Smoothing
 
-            if HasMouseMove then
+            if typeof(mousemoverel) == "function" then
                 mousemoverel(delta.X, delta.Y)
             else
-                -- Camera-based fallback
-                local currentCF = Camera.CFrame
-                local lookAt = CFrame.new(currentCF.Position, targetPos)
-                Camera.CFrame = currentCF:Lerp(lookAt, Settings.Smoothing)
+                -- Method 2: Direct camera CFrame (always works)
+                local currentPos = Camera.CFrame.Position
+                local newCF = CFrame.new(currentPos, targetPos)
+                Camera.CFrame = Camera.CFrame:Lerp(newCF, Settings.Smoothing)
             end
         end
     end
@@ -238,4 +238,4 @@ ArsenalKit:CreateToggle(Tab, "Wall Check", true, function(v)
     Settings.WallCheck = v
 end)
 
-print("[ArsenalKit] Aimbot v5 loaded")
+print("[ArsenalKit] Aimbot v6 loaded")
