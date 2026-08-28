@@ -66,7 +66,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 --// Build UI
-local Tab = ArsenalKit:CreateTab("World", "🌍")
+local Tab = ArsenalKit:CreateTab("World", "E")
 
 ArsenalKit:CreateSection(Tab, "Visuals")
 

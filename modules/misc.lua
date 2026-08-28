@@ -109,7 +109,7 @@ RunService.Heartbeat:Connect(function()
 end)
 
 --// Build UI
-local Tab = ArsenalKit:CreateTab("Misc", "⚙")
+local Tab = ArsenalKit:CreateTab("Misc", "X")
 
 ArsenalKit:CreateSection(Tab, "Utility")
 

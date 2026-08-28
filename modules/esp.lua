@@ -380,7 +380,7 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 --// Build UI
-local Tab = ArsenalKit:CreateTab("Visuals", "👁")
+local Tab = ArsenalKit:CreateTab("Visuals", "V")
 
 ArsenalKit:CreateSection(Tab, "ESP")
 

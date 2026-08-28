@@ -151,7 +151,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 --// Build UI
-local Tab = ArsenalKit:CreateTab("Movement", "🏃")
+local Tab = ArsenalKit:CreateTab("Movement", "M")
 
 ArsenalKit:CreateSection(Tab, "Speed")
 

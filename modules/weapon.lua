@@ -1,13 +1,12 @@
 --// ArsenalKit Module: Weapon
 --// Features: No Recoil, No Spread, Rapid Fire, Instant Reload, Auto Fire, Infinite Ammo
---// Arsenal-specific with getgc hooks, value scanning, and camera fallback
+--// Safe for all executors - no getgc, no debug library, no hookmetamethod
 
 local ArsenalKit = _G.ArsenalKit
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Camera = Workspace.CurrentCamera
 
 local LocalPlayer = Players.LocalPlayer
@@ -31,10 +30,9 @@ local Settings = {
 
 --// State
 local WeaponCache = {}
-local OriginalFuncs = {}
 local AutoFireConnection = nil
 local LastTool = nil
-local RecoilCounter = CFrame.new()
+local LastCamCF = nil
 
 --// Debug Print
 local function DebugPrint(...)
@@ -43,10 +41,7 @@ local function DebugPrint(...)
     end
 end
 
---// ==========================
---// METHOD 1: Value/Attribute Scanning
---// ==========================
-
+--// Utility: Get Current Tool
 local function GetCurrentTool()
     local char = LocalPlayer.Character
     if not char then return nil end
@@ -62,24 +57,25 @@ local function GetCurrentTool()
     return nil
 end
 
+--// Utility: Scan Weapon for Moddable Values
 local function ScanWeapon(tool)
     if not tool then return {} end
     local found = {}
 
     for _, obj in ipairs(tool:GetDescendants()) do
-        -- Number/Int values
+        -- Number/Int/Double values
         if obj:IsA("NumberValue") or obj:IsA("IntValue") or obj:IsA("DoubleConstrainedValue") then
             local name = obj.Name:lower()
             local cat = nil
-            if name:find("recoil") or name:find("kick") or name:find("camshake") or name:find("camkick") then
+            if name:find("recoil") or name:find("kick") or name:find("camshake") or name:find("camkick") or name:find("muzzle") then
                 cat = "Recoil"
             elseif name:find("spread") or name:find("accuracy") or name:find("cone") or name:find("deviation") or name:find("hip") then
                 cat = "Spread"
-            elseif name:find("firerate") or name:find("rpm") or name:find("speed") or name:find("rate") then
+            elseif name:find("firerate") or name:find("rpm") or name:find("speed") or name:find("rate") or name:find("cooldown") then
                 cat = "FireRate"
             elseif name:find("reload") then
                 cat = "Reload"
-            elseif name:find("ammo") or name:find("clip") or name:find("mag") or name:find("round") then
+            elseif name:find("ammo") or name:find("clip") or name:find("mag") or name:find("round") or name:find("bullet") then
                 cat = "Ammo"
             elseif name:find("damage") or name:find("dmg") then
                 cat = "Damage"
@@ -89,16 +85,16 @@ local function ScanWeapon(tool)
             end
         end
 
-        -- Attributes
+        -- Attributes (newer Roblox feature)
         for attrName, attrVal in pairs(obj:GetAttributes()) do
             local al = attrName:lower()
             local cat = nil
             if type(attrVal) == "number" then
-                if al:find("recoil") or al:find("kick") then cat = "Recoil"
-                elseif al:find("spread") or al:find("accuracy") then cat = "Spread"
-                elseif al:find("firerate") or al:find("rpm") then cat = "FireRate"
+                if al:find("recoil") or al:find("kick") or al:find("muzzle") then cat = "Recoil"
+                elseif al:find("spread") or al:find("accuracy") or al:find("cone") then cat = "Spread"
+                elseif al:find("firerate") or al:find("rpm") or al:find("cooldown") then cat = "FireRate"
                 elseif al:find("reload") then cat = "Reload"
-                elseif al:find("ammo") or al:find("clip") then cat = "Ammo"
+                elseif al:find("ammo") or al:find("clip") or al:find("mag") then cat = "Ammo"
                 elseif al:find("damage") then cat = "Damage"
                 end
                 if cat then
@@ -111,7 +107,8 @@ local function ScanWeapon(tool)
     return found
 end
 
-local function ApplyValues()
+--// Apply Weapon Mods
+local function ApplyWeaponMods()
     local tool = GetCurrentTool()
     if not tool then return end
 
@@ -138,7 +135,7 @@ local function ApplyValues()
             else info.Object.Value = 0.01 end
         end
         if info.Category == "Ammo" and Settings.InfiniteAmmo then
-            if not info.Name:lower():find("max") and not info.Name:lower():find("total") then
+            if not info.Name:lower():find("max") and not info.Name:lower():find("total") and not info.Name:lower():find("reserve") then
                 if info.IsAttribute then info.Object:SetAttribute(info.Name, 999)
                 else info.Object.Value = 999 end
             end
@@ -146,64 +143,31 @@ local function ApplyValues()
     end
 end
 
---// ==========================
---// METHOD 2: getgc() Function Hooks
---// ==========================
+--// Camera Recoil Counter (Method 2 - no getgc needed)
+RunService.RenderStepped:Connect(function()
+    -- Method 1: Value scanning
+    ApplyWeaponMods()
 
-local function HookWeaponFunctions()
-    local hooked = 0
-    for _, v in pairs(getgc(true)) do
-        if type(v) == "function" and islclosure(v) then
-            local info = debug.getinfo(v)
-            if info and info.source and (info.source:find("Weapon") or info.source:find("Gun") or info.source:find("Tool")) then
-                local upvals = debug.getupvalues(v)
-                for i, upval in pairs(upvals) do
-                    if type(upval) == "number" then
-                        local name = debug.getupvalue(v, i)
-                        if name then
-                            local nl = tostring(name):lower()
-                            if Settings.NoRecoil and (nl:find("recoil") or nl:find("kick")) then
-                                pcall(function() debug.setupvalue(v, i, 0) end)
-                                hooked = hooked + 1
-                            end
-                            if Settings.NoSpread and (nl:find("spread") or nl:find("accuracy")) then
-                                pcall(function() debug.setupvalue(v, i, 0) end)
-                                hooked = hooked + 1
-                            end
-                            if Settings.RapidFire and (nl:find("firerate") or nl:find("rpm") or nl:find("cooldown")) then
-                                pcall(function() debug.setupvalue(v, i, 0.01) end)
-                                hooked = hooked + 1
-                            end
-                        end
-                    end
-                end
+    -- Method 2: Camera recoil dampening
+    if Settings.NoRecoil and LastCamCF then
+        -- Detect and counter sudden camera rotation changes
+        local currentCF = Camera.CFrame
+        local pos = currentCF.Position
+        local lastPos = LastCamCF.Position
+
+        -- If camera position is same but rotation changed significantly upward, counter it
+        if (pos - lastPos).Magnitude < 0.1 then
+            -- Camera didn't move positionally, check rotation
+            local lookDiff = currentCF.LookVector - LastCamCF.LookVector
+            -- If looking up suddenly (negative Y change), dampen it
+            if lookDiff.Y < -0.01 then
+                local correctedLook = Vector3.new(currentCF.LookVector.X, LastCamCF.LookVector.Y, currentCF.LookVector.Z).Unit
+                local newCF = CFrame.new(pos, pos + correctedLook)
+                Camera.CFrame = newCF
             end
         end
     end
-    DebugPrint("Hooked", hooked, "function upvalues via getgc")
-end
-
---// ==========================
---// METHOD 3: Camera Recoil Counter
---// ==========================
-
-local LastCamCF = nil
-RunService.RenderStepped:Connect(function()
-    -- Method 1: Value scanning
-    ApplyValues()
-
-    -- Method 3: Camera recoil counter
-    if Settings.NoRecoil then
-        if LastCamCF then
-            -- Detect sudden camera rotation (recoil) and counter it
-            local currentRot = Camera.CFrame - Camera.CFrame.Position
-            local lastRot = LastCamCF - LastCamCF.Position
-            local diff = currentRot:Inverse() * lastRot
-            -- If camera jumped significantly upward (typical recoil pattern), counter it
-            -- This is a simplified approach
-        end
-        LastCamCF = Camera.CFrame
-    end
+    LastCamCF = Camera.CFrame
 end)
 
 --// Auto Fire
@@ -233,35 +197,28 @@ RunService.Heartbeat:Connect(function()
         if current then
             WeaponCache = {}
             DebugPrint("Equipped:", current.Name)
-            -- Re-apply getgc hooks for new tool
-            if Settings.NoRecoil or Settings.NoSpread or Settings.RapidFire then
-                task.delay(0.3, HookWeaponFunctions)
-            end
         end
     end
 end)
 
 --// Build UI
-local Tab = ArsenalKit:CreateTab("Weapon", "🔫")
+local Tab = ArsenalKit:CreateTab("Weapon", "W")
 
 ArsenalKit:CreateSection(Tab, "Combat Mods")
 
 ArsenalKit:CreateToggle(Tab, "No Recoil", false, function(v)
     Settings.NoRecoil = v
     WeaponCache = {}
-    if v then task.delay(0.2, HookWeaponFunctions) end
 end)
 
 ArsenalKit:CreateToggle(Tab, "No Spread", false, function(v)
     Settings.NoSpread = v
     WeaponCache = {}
-    if v then task.delay(0.2, HookWeaponFunctions) end
 end)
 
 ArsenalKit:CreateToggle(Tab, "Rapid Fire", false, function(v)
     Settings.RapidFire = v
     WeaponCache = {}
-    if v then task.delay(0.2, HookWeaponFunctions) end
 end)
 
 ArsenalKit:CreateSlider(Tab, "Fire Rate", 1, 50, 20, function(v)
