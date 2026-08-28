@@ -613,7 +613,7 @@ function ArsenalKit:CreateDropdown(parent, label, options, default, callback)
     return Container
 end
 
---// Create Keybind
+--// Create Keybind (supports keyboard + mouse buttons)
 function ArsenalKit:CreateKeybind(parent, label, defaultKey, callback)
     local Container = Instance.new("Frame")
     Container.Size = UDim2.new(1, 0, 0, 36)
@@ -638,7 +638,6 @@ function ArsenalKit:CreateKeybind(parent, label, defaultKey, callback)
     KeyBtn.Size = UDim2.new(0, 70, 0, 26)
     KeyBtn.Position = UDim2.new(1, -82, 0.5, -13)
     KeyBtn.BackgroundColor3 = Colors.Keybind
-    KeyBtn.Text = defaultKey and defaultKey.Name or "NONE"
     KeyBtn.TextColor3 = Colors.Text
     KeyBtn.Font = Enum.Font.SourceSans
     KeyBtn.TextSize = 12
@@ -648,13 +647,47 @@ function ArsenalKit:CreateKeybind(parent, label, defaultKey, callback)
 
     Instance.new("UICorner", KeyBtn).CornerRadius = UDim.new(0, 4)
 
-    local CurrentKey = defaultKey
+    --// Keybind state
+    local CurrentKey = nil          -- Enum.KeyCode
+    local CurrentMouse = nil        -- Enum.UserInputType for mouse buttons
     local Listening = false
+
+    --// Helper: get display name
+    local function GetBindName()
+        if CurrentKey and CurrentKey ~= Enum.KeyCode.Unknown then
+            return CurrentKey.Name
+        elseif CurrentMouse then
+            if CurrentMouse == Enum.UserInputType.MouseButton1 then return "LMB" end
+            if CurrentMouse == Enum.UserInputType.MouseButton2 then return "RMB" end
+            if CurrentMouse == Enum.UserInputType.MouseButton3 then return "MMB" end
+            if CurrentMouse == Enum.UserInputType.MouseButton4 then return "MB4" end
+            if CurrentMouse == Enum.UserInputType.MouseButton5 then return "MB5" end
+            return CurrentMouse.Name
+        end
+        return "NONE"
+    end
+
+    --// Helper: check if input matches bind
+    local function MatchesBind(input)
+        if CurrentKey and input.KeyCode == CurrentKey then return true end
+        if CurrentMouse and input.UserInputType == CurrentMouse then return true end
+        return false
+    end
+
+    --// Set initial
+    if typeof(defaultKey) == "EnumItem" then
+        if defaultKey.EnumType == Enum.KeyCode then
+            CurrentKey = defaultKey
+        elseif defaultKey.EnumType == Enum.UserInputType then
+            CurrentMouse = defaultKey
+        end
+    end
+    KeyBtn.Text = GetBindName()
 
     KeyBtn.MouseButton1Click:Connect(function()
         if Listening then
             Listening = false
-            KeyBtn.Text = CurrentKey and CurrentKey.Name or "NONE"
+            KeyBtn.Text = GetBindName()
             KeyBtn.BackgroundColor3 = Colors.Keybind
             return
         end
@@ -665,22 +698,36 @@ function ArsenalKit:CreateKeybind(parent, label, defaultKey, callback)
 
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
+
+        --// Listening mode - capture new bind
         if Listening then
             if input.KeyCode ~= Enum.KeyCode.Unknown then
                 CurrentKey = input.KeyCode
-                KeyBtn.Text = CurrentKey.Name
-                KeyBtn.BackgroundColor3 = Colors.Keybind
-                Listening = false
-                if callback then callback(CurrentKey) end
+                CurrentMouse = nil
+            elseif input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.MouseButton2
+                or input.UserInputType == Enum.UserInputType.MouseButton3
+                or input.UserInputType == Enum.UserInputType.MouseButton4
+                or input.UserInputType == Enum.UserInputType.MouseButton5 then
+                CurrentMouse = input.UserInputType
+                CurrentKey = nil
+            else
+                return -- ignore other inputs
             end
+            KeyBtn.Text = GetBindName()
+            KeyBtn.BackgroundColor3 = Colors.Keybind
+            Listening = false
+            if callback then callback(CurrentKey or CurrentMouse) end
             return
         end
-        if CurrentKey and input.KeyCode == CurrentKey then
-            if callback then callback(CurrentKey, true) end
+
+        --// Active mode - trigger bind
+        if MatchesBind(input) then
+            if callback then callback(CurrentKey or CurrentMouse, true) end
         end
     end)
 
-    return Container, function() return CurrentKey end
+    return Container, function() return CurrentKey or CurrentMouse end
 end
 
 --// Dragging
