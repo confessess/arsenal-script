@@ -1,5 +1,5 @@
---// ArsenalKit Module: Aimbot v4
---// Camera-based aimbot with sticky target, wall check, team check
+--// ArsenalKit Module: Aimbot v5
+--// Simple camera-based aimbot with sticky target
 
 local ArsenalKit = _G.ArsenalKit
 local Players = game:GetService("Players")
@@ -30,7 +30,7 @@ local Settings = {
 
 --// State
 local CurrentTarget = nil
-local HasMouseMoveRel = typeof(mousemoverel) == "function"
+local HasMouseMove = typeof(mousemoverel) == "function"
 
 --// FOV Circle
 local FOVCircle = nil
@@ -49,33 +49,31 @@ if typeof(Drawing) == "table" and Drawing.new then
     end
 end
 
---// Utility: Is Alive
-local function IsAlive(character)
-    if not character then return false end
-    local hum = character:FindFirstChildOfClass("Humanoid")
+--// Is Alive
+local function IsAlive(char)
+    if not char then return false end
+    local hum = char:FindFirstChildOfClass("Humanoid")
     return hum and hum.Health > 0
 end
 
---// Utility: Wall Check
+--// Wall Check
 local function IsVisible(targetPart)
     if not Settings.WallCheck then return true end
     if not targetPart then return false end
     local origin = Camera.CFrame.Position
     local targetPos = targetPart.Position
     local direction = targetPos - origin
-    local distance = direction.Magnitude
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character}
-    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-    raycastParams.IgnoreWater = true
-    local result = Workspace:Raycast(origin, direction.Unit * distance, raycastParams)
+    local rayParams = RaycastParams.new()
+    rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
+    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+    local result = Workspace:Raycast(origin, direction.Unit * direction.Magnitude, rayParams)
     if result then
         return result.Instance:IsDescendantOf(targetPart.Parent)
     end
     return true
 end
 
---// Utility: Get target position
+--// Get target position
 local function GetTargetPos(player)
     if not player then return nil end
     local char = player.Character
@@ -91,8 +89,19 @@ local function GetTargetPos(player)
     return part.Position
 end
 
---// Utility: Get screen distance from mouse to player
-local function GetScreenDistance(player)
+--// Get target part for visibility
+local function GetTargetPart(player)
+    if not player then return nil end
+    local char = player.Character
+    if not char then return nil end
+    local part = char:FindFirstChild(Settings.AimPart)
+    if not part then part = char:FindFirstChild("Head") end
+    if not part then part = char:FindFirstChild("HumanoidRootPart") end
+    return part
+end
+
+--// Screen distance
+local function GetScreenDist(player)
     if player == LocalPlayer then return math.huge end
     if Settings.TeamCheck and player.Team == LocalPlayer.Team then return math.huge end
     local char = player.Character
@@ -101,7 +110,7 @@ local function GetScreenDistance(player)
     local pos = GetTargetPos(player)
     if not pos then return math.huge end
     if Settings.WallCheck then
-        local part = char:FindFirstChild(Settings.AimPart) or char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+        local part = GetTargetPart(player)
         if part and not IsVisible(part) then return math.huge end
     end
     local screenPos, onScreen = Camera:WorldToViewportPoint(pos)
@@ -110,12 +119,12 @@ local function GetScreenDistance(player)
     return (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
 end
 
---// Utility: Find closest player
-local function FindClosestPlayer()
+--// Find closest
+local function FindClosest()
     local closest = nil
     local minDist = Settings.FOV
     for _, player in ipairs(Players:GetPlayers()) do
-        local dist = GetScreenDistance(player)
+        local dist = GetScreenDist(player)
         if dist < minDist then
             minDist = dist
             closest = player
@@ -124,7 +133,7 @@ local function FindClosestPlayer()
     return closest
 end
 
---// Utility: Validate sticky target
+--// Validate sticky target
 local function ValidateTarget(player)
     if not player then return false end
     if player == LocalPlayer then return false end
@@ -132,7 +141,7 @@ local function ValidateTarget(player)
     if not char then return false end
     if not IsAlive(char) then return false end
     if Settings.TeamCheck and player.Team == LocalPlayer.Team then return false end
-    local dist = GetScreenDistance(player)
+    local dist = GetScreenDist(player)
     if dist > Settings.FOV * 1.5 then return false end
     return true
 end
@@ -141,7 +150,7 @@ end
 RunService.RenderStepped:Connect(function()
     local mousePos = UserInputService:GetMouseLocation()
 
-    -- Update FOV Circle
+    -- FOV Circle
     if HasDrawing and FOVCircle then
         FOVCircle.Position = mousePos
         FOVCircle.Radius = Settings.FOV
@@ -149,19 +158,19 @@ RunService.RenderStepped:Connect(function()
         FOVCircle.Color = Settings.Enabled and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(0, 170, 255)
     end
 
-    -- Sticky target validation
+    -- Sticky target
     if Settings.StickyTarget and CurrentTarget then
         if not ValidateTarget(CurrentTarget) then
             CurrentTarget = nil
         end
     end
 
-    -- Find new target if needed
+    -- Find target
     if not CurrentTarget or not Settings.StickyTarget then
-        CurrentTarget = FindClosestPlayer()
+        CurrentTarget = FindClosest()
     end
 
-    -- Aim at target
+    -- Aim
     if Settings.Enabled and CurrentTarget then
         local targetPos = GetTargetPos(CurrentTarget)
         if targetPos then
@@ -169,13 +178,13 @@ RunService.RenderStepped:Connect(function()
             local targetScreen = Vector2.new(screenPos.X, screenPos.Y)
             local delta = (targetScreen - mousePos) * Settings.Smoothing
 
-            if HasMouseMoveRel then
+            if HasMouseMove then
                 mousemoverel(delta.X, delta.Y)
             else
-                -- Fallback: modify camera CFrame
+                -- Camera-based fallback
                 local currentCF = Camera.CFrame
-                local targetCF = CFrame.new(currentCF.Position, targetPos)
-                Camera.CFrame = currentCF:Lerp(targetCF, Settings.Smoothing)
+                local lookAt = CFrame.new(currentCF.Position, targetPos)
+                Camera.CFrame = currentCF:Lerp(lookAt, Settings.Smoothing)
             end
         end
     end
@@ -193,7 +202,6 @@ end)
 ArsenalKit:CreateKeybind(Tab, "Aim Key", Settings.Keybind, function(key, pressed)
     if pressed then
         Settings.Enabled = not Settings.Enabled
-        print("[Aimbot] " .. (Settings.Enabled and "ON" or "OFF"))
     else
         Settings.Keybind = key
     end
@@ -230,4 +238,4 @@ ArsenalKit:CreateToggle(Tab, "Wall Check", true, function(v)
     Settings.WallCheck = v
 end)
 
-print("[ArsenalKit] Aimbot v4 loaded")
+print("[ArsenalKit] Aimbot v5 loaded")
