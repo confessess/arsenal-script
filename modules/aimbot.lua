@@ -1,6 +1,5 @@
---// ArsenalKit Module: Aimbot
---// Features: Silent Aim, Auto-Aim, FOV Circle, Smoothing
---// Safe for all executors - checks every function before calling
+--// ArsenalKit Module: Aimbot v3
+--// Features: Keybind aim, FOV Circle, Smoothing, Team Check, Wall Check
 
 local ArsenalKit = _G.ArsenalKit
 local Players = game:GetService("Players")
@@ -19,16 +18,17 @@ ArsenalKit.Modules.Aimbot = true
 
 --// Settings
 local Settings = {
-    SilentAim = false,
-    AutoAim = false,
+    Enabled = false,
+    Keybind = Enum.KeyCode.Q,
     FOV = 120,
     Smoothing = 0.15,
     TeamCheck = true,
-    WallCheck = false,
-    AimPart = "Head"
+    WallCheck = true,
+    AimPart = "Head",
+    ShowFOV = true
 }
 
---// FOV Circle (only if Drawing library exists)
+--// FOV Circle
 local FOVCircle = nil
 local HasDrawing = false
 
@@ -48,15 +48,33 @@ if typeof(Drawing) == "table" and Drawing.new then
     end
 end
 
---// Utility: Get Character
-local function GetCharacter(player)
-    return player.Character
-end
-
 --// Utility: Is Alive
 local function IsAlive(character)
     local hum = character:FindFirstChildOfClass("Humanoid")
     return hum and hum.Health > 0
+end
+
+--// Utility: Wall Check (Raycast)
+local function IsVisible(targetPart)
+    if not Settings.WallCheck then return true end
+    if not targetPart then return false end
+
+    local origin = Camera.CFrame.Position
+    local targetPos = targetPart.Position
+    local direction = targetPos - origin
+    local distance = direction.Magnitude
+
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character}
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    raycastParams.IgnoreWater = true
+
+    local result = Workspace:Raycast(origin, direction.Unit * distance, raycastParams)
+    if result then
+        -- Check if what we hit is part of the target character
+        return result.Instance:IsDescendantOf(targetPart.Parent)
+    end
+    return true
 end
 
 --// Utility: Get Closest Player to Mouse
@@ -69,12 +87,15 @@ local function GetClosestPlayer()
         if player == LocalPlayer then continue end
         if Settings.TeamCheck and player.Team == LocalPlayer.Team then continue end
 
-        local char = GetCharacter(player)
+        local char = player.Character
         if not char then continue end
         if not IsAlive(char) then continue end
 
         local part = char:FindFirstChild(Settings.AimPart)
         if not part then continue end
+
+        -- Wall check before screen check
+        if Settings.WallCheck and not IsVisible(part) then continue end
 
         local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
         if not onScreen then continue end
@@ -91,70 +112,25 @@ end
 
 --// Utility: Get Aim Position
 local function GetAimPosition(player)
-    local char = GetCharacter(player)
+    local char = player.Character
     if not char then return nil end
     local part = char:FindFirstChild(Settings.AimPart)
     if not part then return nil end
     return part.Position
 end
 
---// Silent Aim via __namecall hook (if supported)
-local SilentAimTarget = nil
-local NamecallHooked = false
-
---// Check if we have the required functions for silent aim
-local CanHookNamecall = false
-if typeof(hookmetamethod) == "function" and typeof(getnamecallmethod) == "function" then
-    CanHookNamecall = true
-end
-
-if CanHookNamecall then
-    local hookOk = pcall(function()
-        local oldNamecall
-        oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-            local method = getnamecallmethod()
-            local args = {...}
-
-            if Settings.SilentAim and method == "FireServer" and SilentAimTarget then
-                local pos = GetAimPosition(SilentAimTarget)
-                if pos then
-                    for i, arg in ipairs(args) do
-                        if typeof(arg) == "Vector3" then
-                            args[i] = pos
-                        elseif typeof(arg) == "CFrame" then
-                            args[i] = CFrame.new(pos)
-                        end
-                    end
-                end
-            end
-
-            return oldNamecall(self, unpack(args))
-        end)
-        NamecallHooked = true
-    end)
-
-    if not hookOk then
-        warn("[Aimbot] Silent Aim hook failed - executor may not support hookmetamethod")
-    end
-end
-
---// Update silent aim target every frame
+--// Main Loop
 RunService.RenderStepped:Connect(function()
-    if Settings.SilentAim and NamecallHooked then
-        SilentAimTarget = GetClosestPlayer()
-    else
-        SilentAimTarget = nil
-    end
-
     -- Update FOV Circle
     if HasDrawing and FOVCircle then
         FOVCircle.Position = Vector2.new(Mouse.X, Mouse.Y + 36)
         FOVCircle.Radius = Settings.FOV
-        FOVCircle.Visible = (Settings.SilentAim or Settings.AutoAim) and Settings.FOV > 0
+        FOVCircle.Visible = Settings.ShowFOV
+        FOVCircle.Color = Settings.Enabled and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(0, 170, 255)
     end
 
-    -- Auto-Aim
-    if Settings.AutoAim and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+    -- Aimbot
+    if Settings.Enabled then
         local target = GetClosestPlayer()
         if target then
             local pos = GetAimPosition(target)
@@ -176,17 +152,17 @@ local Tab = ArsenalKit:CreateTab("Combat", "C")
 
 ArsenalKit:CreateSection(Tab, "Aimbot")
 
-ArsenalKit:CreateToggle(Tab, "Silent Aim", false, function(v)
-    if v and not NamecallHooked then
-        warn("[Aimbot] Silent Aim unavailable - hookmetamethod not supported by executor")
-        Settings.SilentAim = false
-        return
-    end
-    Settings.SilentAim = v
+ArsenalKit:CreateToggle(Tab, "Enabled", false, function(v)
+    Settings.Enabled = v
 end)
 
-ArsenalKit:CreateToggle(Tab, "Auto-Aim (RMB)", false, function(v)
-    Settings.AutoAim = v
+ArsenalKit:CreateKeybind(Tab, "Aim Key", Settings.Keybind, function(key, pressed)
+    if pressed then
+        Settings.Enabled = not Settings.Enabled
+        print("[Aimbot] " .. (Settings.Enabled and "ON" or "OFF"))
+    else
+        Settings.Keybind = key
+    end
 end)
 
 ArsenalKit:CreateDropdown(Tab, "Aim Part", {"Head", "Torso", "HumanoidRootPart"}, "Head", function(v)
@@ -201,12 +177,18 @@ ArsenalKit:CreateSlider(Tab, "Smoothing", 1, 100, 15, function(v)
     Settings.Smoothing = v / 100
 end)
 
+ArsenalKit:CreateToggle(Tab, "Show FOV Circle", true, function(v)
+    Settings.ShowFOV = v
+end)
+
+ArsenalKit:CreateSection(Tab, "Filters")
+
 ArsenalKit:CreateToggle(Tab, "Team Check", true, function(v)
     Settings.TeamCheck = v
 end)
 
-ArsenalKit:CreateToggle(Tab, "Wall Check", false, function(v)
+ArsenalKit:CreateToggle(Tab, "Wall Check", true, function(v)
     Settings.WallCheck = v
 end)
 
-print("[ArsenalKit] Aimbot module loaded")
+print("[ArsenalKit] Aimbot v3 loaded")

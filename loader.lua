@@ -1,6 +1,5 @@
---// ArsenalKit Modular Loader v2.1
+--// ArsenalKit Modular Loader v3.0
 --// Paste this into your executor. It fetches all modules from GitHub.
---// Replace BASE_URL with your raw GitHub URL after pushing.
 
 local BASE_URL = "https://raw.githubusercontent.com/confessess/arsenal-script/main"
 
@@ -24,7 +23,8 @@ local Colors = {
     TextDim = Color3.fromRGB(150, 150, 160),
     ToggleOn = Color3.fromRGB(0, 200, 100),
     ToggleOff = Color3.fromRGB(60, 60, 70),
-    Error = Color3.fromRGB(200, 60, 60)
+    Error = Color3.fromRGB(200, 60, 60),
+    Keybind = Color3.fromRGB(255, 170, 0)
 }
 
 --// Module Registry
@@ -33,6 +33,7 @@ local ArsenalKit = {
     Features = {},
     Tabs = {},
     Colors = Colors,
+    Keybinds = {},
     Tween = function(obj, props, dur)
         TweenService:Create(obj, TweenInfo.new(dur or 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props):Play()
     end
@@ -43,7 +44,6 @@ _G.ArsenalKit = ArsenalKit
 local InstanceID = tick()
 ArsenalKit.InstanceID = InstanceID
 
---// Kill any previous instance
 if _G.ArsenalKitInstanceID then
     warn("[ArsenalKit] Previous instance detected. Cleaning up...")
     for _, gui in ipairs(PlayerGui:GetChildren()) do
@@ -84,11 +84,10 @@ local function LoadModule(name)
     end
 end
 
-----// ==========================
+--// ==========================
 --// UI FRAMEWORK
-----// ==========================
+--// ==========================
 
---// Destroy old GUI if exists
 for _, gui in ipairs(PlayerGui:GetChildren()) do
     if gui.Name == "ArsenalKit" then
         gui:Destroy()
@@ -104,8 +103,8 @@ ScreenGui.Parent = PlayerGui
 
 local Main = Instance.new("Frame")
 Main.Name = "Main"
-Main.Size = UDim2.new(0, 540, 0, 360)
-Main.Position = UDim2.new(0.5, -270, 0.5, -180)
+Main.Size = UDim2.new(0, 560, 0, 380)
+Main.Position = UDim2.new(0.5, -280, 0.5, -190)
 Main.BackgroundColor3 = Colors.Background
 Main.BorderSizePixel = 0
 Main.ClipsDescendants = true
@@ -139,7 +138,7 @@ TitleBar.Parent = Main
 Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, 8)
 
 local TitleText = Instance.new("TextLabel")
-TitleText.Text = "ARSENAL KIT  v2.1"
+TitleText.Text = "ARSENAL KIT  v3.0"
 TitleText.Size = UDim2.new(1, -100, 1, 0)
 TitleText.Position = UDim2.new(0, 14, 0, 0)
 TitleText.BackgroundTransparency = 1
@@ -213,9 +212,8 @@ Content.Parent = Main
 
 local ActiveTab = nil
 
---// Create Tab (DUPLICATE PROTECTION)
+--// Create Tab
 function ArsenalKit:CreateTab(name, icon)
-    -- Prevent duplicate tabs
     if ArsenalKit.Tabs[name] then
         return ArsenalKit.Tabs[name]
     end
@@ -224,7 +222,7 @@ function ArsenalKit:CreateTab(name, icon)
     TabBtn.Name = name
     TabBtn.Size = UDim2.new(1, 0, 0, 32)
     TabBtn.BackgroundColor3 = Colors.Surface
-    TabBtn.Text = "  " .. (icon or ">") .. "  " .. name
+    TabBtn.Text = "  [" .. (icon or ">") .. "]  " .. name
     TabBtn.TextColor3 = Colors.TextDim
     TabBtn.Font = Enum.Font.SourceSans
     TabBtn.TextSize = 13
@@ -480,13 +478,12 @@ function ArsenalKit:CreateButton(parent, label, callback)
     return Btn
 end
 
---// Create Dropdown
+--// Create Dropdown (FIXED - no clipping issues)
 function ArsenalKit:CreateDropdown(parent, label, options, default, callback)
     local Container = Instance.new("Frame")
     Container.Size = UDim2.new(1, 0, 0, 34)
     Container.BackgroundColor3 = Colors.Surface
     Container.BorderSizePixel = 0
-    Container.ClipsDescendants = true
     Container.Parent = parent
 
     Instance.new("UICorner", Container).CornerRadius = UDim.new(0, 6)
@@ -516,49 +513,174 @@ function ArsenalKit:CreateDropdown(parent, label, options, default, callback)
 
     Instance.new("UICorner", Selected).CornerRadius = UDim.new(0, 4)
 
+    --// Dropdown options overlay (parented to ScreenGui to avoid clipping)
+    local OptionsFrame = Instance.new("Frame")
+    OptionsFrame.Name = "DropdownOptions"
+    OptionsFrame.Size = UDim2.new(0, 100, 0, 0)
+    OptionsFrame.BackgroundColor3 = Colors.Surface
+    OptionsFrame.BorderSizePixel = 0
+    OptionsFrame.Visible = false
+    OptionsFrame.ZIndex = 100
+    OptionsFrame.Parent = ScreenGui
+
+    Instance.new("UICorner", OptionsFrame).CornerRadius = UDim.new(0, 6)
+
+    local OptionsList = Instance.new("UIListLayout")
+    OptionsList.Padding = UDim.new(0, 2)
+    OptionsList.SortOrder = Enum.SortOrder.LayoutOrder
+    OptionsList.Parent = OptionsFrame
+
     local Opened = false
-    local OptionButtons = {}
 
-    Selected.MouseButton1Click:Connect(function()
-        Opened = not Opened
-        local h = Opened and (34 + #options * 28) or 34
-        ArsenalKit.Tween(Container, {Size = UDim2.new(1, 0, 0, h)}, 0.2)
-    end)
-
-    for i, opt in ipairs(options) do
-        local OptBtn = Instance.new("TextButton")
-        OptBtn.Size = UDim2.new(1, -24, 0, 26)
-        OptBtn.Position = UDim2.new(0, 12, 0, 34 + (i-1)*28)
-        OptBtn.BackgroundColor3 = Colors.Background
-        OptBtn.Text = opt
-        OptBtn.TextColor3 = Colors.TextDim
-        OptBtn.Font = Enum.Font.SourceSans
-        OptBtn.TextSize = 12
-        OptBtn.BorderSizePixel = 0
-        OptBtn.AutoButtonColor = false
-        OptBtn.Parent = Container
-
-        Instance.new("UICorner", OptBtn).CornerRadius = UDim.new(0, 4)
-
-        OptBtn.MouseEnter:Connect(function()
-            ArsenalKit.Tween(OptBtn, {BackgroundColor3 = Colors.SurfaceHover, TextColor3 = Colors.Text}, 0.1)
-        end)
-
-        OptBtn.MouseLeave:Connect(function()
-            ArsenalKit.Tween(OptBtn, {BackgroundColor3 = Colors.Background, TextColor3 = Colors.TextDim}, 0.1)
-        end)
-
-        OptBtn.MouseButton1Click:Connect(function()
-            Selected.Text = opt
-            Opened = false
-            ArsenalKit.Tween(Container, {Size = UDim2.new(1, 0, 0, 34)}, 0.2)
-            if callback then callback(opt) end
-        end)
-
-        table.insert(OptionButtons, OptBtn)
+    local function CloseDropdown()
+        Opened = false
+        OptionsFrame.Visible = false
+        for _, child in ipairs(OptionsFrame:GetChildren()) do
+            if child:IsA("TextButton") then
+                child:Destroy()
+            end
+        end
     end
 
+    local function OpenDropdown()
+        if Opened then
+            CloseDropdown()
+            return
+        end
+        Opened = true
+
+        -- Position overlay below the Selected button
+        local absPos = Selected.AbsolutePosition
+        local absSize = Selected.AbsoluteSize
+        OptionsFrame.Position = UDim2.new(0, absPos.X, 0, absPos.Y + absSize.Y + 2)
+        OptionsFrame.Size = UDim2.new(0, absSize.X, 0, #options * 28)
+        OptionsFrame.Visible = true
+
+        for i, opt in ipairs(options) do
+            local OptBtn = Instance.new("TextButton")
+            OptBtn.Size = UDim2.new(1, 0, 0, 26)
+            OptBtn.BackgroundColor3 = Colors.Background
+            OptBtn.Text = opt
+            OptBtn.TextColor3 = Colors.TextDim
+            OptBtn.Font = Enum.Font.SourceSans
+            OptBtn.TextSize = 12
+            OptBtn.BorderSizePixel = 0
+            OptBtn.AutoButtonColor = false
+            OptBtn.ZIndex = 101
+            OptBtn.Parent = OptionsFrame
+
+            Instance.new("UICorner", OptBtn).CornerRadius = UDim.new(0, 4)
+
+            OptBtn.MouseEnter:Connect(function()
+                ArsenalKit.Tween(OptBtn, {BackgroundColor3 = Colors.SurfaceHover, TextColor3 = Colors.Text}, 0.1)
+            end)
+
+            OptBtn.MouseLeave:Connect(function()
+                ArsenalKit.Tween(OptBtn, {BackgroundColor3 = Colors.Background, TextColor3 = Colors.TextDim}, 0.1)
+            end)
+
+            OptBtn.MouseButton1Click:Connect(function()
+                Selected.Text = opt
+                CloseDropdown()
+                if callback then callback(opt) end
+            end)
+        end
+    end
+
+    Selected.MouseButton1Click:Connect(OpenDropdown)
+
+    -- Close when clicking elsewhere
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            if Opened then
+                local mousePos = input.Position
+                local framePos = OptionsFrame.AbsolutePosition
+                local frameSize = OptionsFrame.AbsoluteSize
+                if mousePos.X < framePos.X or mousePos.X > framePos.X + frameSize.X or
+                   mousePos.Y < framePos.Y or mousePos.Y > framePos.Y + frameSize.Y then
+                    local selPos = Selected.AbsolutePosition
+                    local selSize = Selected.AbsoluteSize
+                    if mousePos.X < selPos.X or mousePos.X > selPos.X + selSize.X or
+                       mousePos.Y < selPos.Y or mousePos.Y > selPos.Y + selSize.Y then
+                        CloseDropdown()
+                    end
+                end
+            end
+        end
+    end)
+
     return Container
+end
+
+--// Create Keybind
+function ArsenalKit:CreateKeybind(parent, label, defaultKey, callback)
+    local Container = Instance.new("Frame")
+    Container.Size = UDim2.new(1, 0, 0, 36)
+    Container.BackgroundColor3 = Colors.Surface
+    Container.BorderSizePixel = 0
+    Container.Parent = parent
+
+    Instance.new("UICorner", Container).CornerRadius = UDim.new(0, 6)
+
+    local LabelObj = Instance.new("TextLabel")
+    LabelObj.Text = label
+    LabelObj.Size = UDim2.new(1, -90, 1, 0)
+    LabelObj.Position = UDim2.new(0, 12, 0, 0)
+    LabelObj.BackgroundTransparency = 1
+    LabelObj.TextColor3 = Colors.Text
+    LabelObj.Font = Enum.Font.SourceSans
+    LabelObj.TextSize = 13
+    LabelObj.TextXAlignment = Enum.TextXAlignment.Left
+    LabelObj.Parent = Container
+
+    local KeyBtn = Instance.new("TextButton")
+    KeyBtn.Size = UDim2.new(0, 70, 0, 26)
+    KeyBtn.Position = UDim2.new(1, -82, 0.5, -13)
+    KeyBtn.BackgroundColor3 = Colors.Keybind
+    KeyBtn.Text = defaultKey and defaultKey.Name or "NONE"
+    KeyBtn.TextColor3 = Colors.Text
+    KeyBtn.Font = Enum.Font.SourceSans
+    KeyBtn.TextSize = 12
+    KeyBtn.BorderSizePixel = 0
+    KeyBtn.AutoButtonColor = false
+    KeyBtn.Parent = Container
+
+    Instance.new("UICorner", KeyBtn).CornerRadius = UDim.new(0, 4)
+
+    local CurrentKey = defaultKey
+    local Listening = false
+
+    KeyBtn.MouseButton1Click:Connect(function()
+        if Listening then
+            Listening = false
+            KeyBtn.Text = CurrentKey and CurrentKey.Name or "NONE"
+            KeyBtn.BackgroundColor3 = Colors.Keybind
+            return
+        end
+        Listening = true
+        KeyBtn.Text = "..."
+        KeyBtn.BackgroundColor3 = Colors.Accent
+    end)
+
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if Listening then
+            if input.KeyCode ~= Enum.KeyCode.Unknown then
+                CurrentKey = input.KeyCode
+                KeyBtn.Text = CurrentKey.Name
+                KeyBtn.BackgroundColor3 = Colors.Keybind
+                Listening = false
+                if callback then callback(CurrentKey) end
+            end
+            return
+        end
+        if CurrentKey and input.KeyCode == CurrentKey then
+            if callback then callback(CurrentKey, true) end
+        end
+    end)
+
+    return Container, function() return CurrentKey end
 end
 
 --// Dragging
@@ -593,8 +715,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
-----// ==========================
---// MODULE LOADING (FIXED COUNTER)
+--// ==========================
+--// MODULE LOADING
 --// ==========================
 
 local ModuleList = {
@@ -606,30 +728,24 @@ local ModuleList = {
     "misc"
 }
 
-local LoadedCount = 0
-local TotalModules = #ModuleList
 local LoadResults = {}
 
 for _, modName in ipairs(ModuleList) do
     task.spawn(function()
         local success = LoadModule(modName)
         LoadResults[modName] = success
-        LoadedCount = LoadedCount + 1
     end)
 end
 
---// Wait for all modules then activate first tab
 task.delay(2, function()
-    -- Count successful loads safely
     local successCount = 0
     for _, v in pairs(LoadResults) do
         if v then successCount = successCount + 1 end
     end
 
-    StatusLabel.Text = successCount .. "/" .. TotalModules .. " loaded"
-    StatusLabel.TextColor3 = successCount == TotalModules and Colors.ToggleOn or Colors.Error
+    StatusLabel.Text = successCount .. "/" .. #ModuleList .. " loaded"
+    StatusLabel.TextColor3 = successCount == #ModuleList and Colors.ToggleOn or Colors.Error
 
-    -- Activate first tab
     local firstTab = nil
     for _, page in pairs(Content:GetChildren()) do
         if page:IsA("ScrollingFrame") then
