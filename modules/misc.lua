@@ -2,6 +2,11 @@
 --// Features: Anti-AFK, Kill All, Teleport to Random, God Mode, Auto Respawn
 
 local ArsenalKit = _G.ArsenalKit
+--// Prevent double-load
+if ArsenalKit.Modules and ArsenalKit.Modules.Misc then return end
+ArsenalKit.Modules = ArsenalKit.Modules or {}
+ArsenalKit.Modules.Misc = true
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")

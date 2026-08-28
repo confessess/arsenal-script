@@ -2,6 +2,11 @@
 --// Features: Silent Aim, Auto-Aim, FOV Circle, Smoothing
 
 local ArsenalKit = _G.ArsenalKit
+--// Prevent double-load
+if ArsenalKit.Modules and ArsenalKit.Modules.Aimbot then return end
+ArsenalKit.Modules = ArsenalKit.Modules or {}
+ArsenalKit.Modules.Aimbot = true
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")

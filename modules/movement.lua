@@ -2,6 +2,11 @@
 --// Features: Speed Hack, Bunny Hop, Infinite Jump, Fly, No Clip
 
 local ArsenalKit = _G.ArsenalKit
+--// Prevent double-load
+if ArsenalKit.Modules and ArsenalKit.Modules.Movement then return end
+ArsenalKit.Modules = ArsenalKit.Modules or {}
+ArsenalKit.Modules.Movement = true
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")

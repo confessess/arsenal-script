@@ -2,6 +2,11 @@
 --// Features: Box, Skeleton, Name, Health Bar, Tracers, Chams
 
 local ArsenalKit = _G.ArsenalKit
+--// Prevent double-load
+if ArsenalKit.Modules and ArsenalKit.Modules.Esp then return end
+ArsenalKit.Modules = ArsenalKit.Modules or {}
+ArsenalKit.Modules.Esp = true
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")

@@ -1,4 +1,4 @@
---// ArsenalKit Modular Loader
+--// ArsenalKit Modular Loader v2.1
 --// Paste this into your executor. It fetches all modules from GitHub.
 --// Replace BASE_URL with your raw GitHub URL after pushing.
 
@@ -39,6 +39,21 @@ local ArsenalKit = {
 }
 _G.ArsenalKit = ArsenalKit
 
+--// Instance ID - prevents double-loading
+local InstanceID = tick()
+ArsenalKit.InstanceID = InstanceID
+
+--// Kill any previous instance
+if _G.ArsenalKitInstanceID then
+    warn("[ArsenalKit] Previous instance detected. Cleaning up...")
+    for _, gui in ipairs(PlayerGui:GetChildren()) do
+        if gui.Name == "ArsenalKit" then
+            gui:Destroy()
+        end
+    end
+end
+_G.ArsenalKitInstanceID = InstanceID
+
 --// Fetch Module from GitHub
 local function FetchModule(name)
     local url = BASE_URL .. "/modules/" .. name .. ".lua"
@@ -69,9 +84,16 @@ local function LoadModule(name)
     end
 end
 
---// ==========================
---// UI FRAMEWORK (built-in)
---// ==========================
+----// ==========================
+--// UI FRAMEWORK
+----// ==========================
+
+--// Destroy old GUI if exists
+for _, gui in ipairs(PlayerGui:GetChildren()) do
+    if gui.Name == "ArsenalKit" then
+        gui:Destroy()
+    end
+end
 
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "ArsenalKit"
@@ -117,7 +139,7 @@ TitleBar.Parent = Main
 Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, 8)
 
 local TitleText = Instance.new("TextLabel")
-TitleText.Text = "ARSENAL KIT  v2.0"
+TitleText.Text = "ARSENAL KIT  v2.1"
 TitleText.Size = UDim2.new(1, -100, 1, 0)
 TitleText.Position = UDim2.new(0, 14, 0, 0)
 TitleText.BackgroundTransparency = 1
@@ -191,8 +213,13 @@ Content.Parent = Main
 
 local ActiveTab = nil
 
---// Create Tab (exposed to modules)
+--// Create Tab (DUPLICATE PROTECTION)
 function ArsenalKit:CreateTab(name, icon)
+    -- Prevent duplicate tabs
+    if ArsenalKit.Tabs[name] then
+        return ArsenalKit.Tabs[name]
+    end
+
     local TabBtn = Instance.new("TextButton")
     TabBtn.Name = name
     TabBtn.Size = UDim2.new(1, 0, 0, 32)
@@ -566,8 +593,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
---// ==========================
---// MODULE LOADING
+----// ==========================
+--// MODULE LOADING (FIXED COUNTER)
 --// ==========================
 
 local ModuleList = {
@@ -579,18 +606,30 @@ local ModuleList = {
     "misc"
 }
 
-local Loaded = 0
+local LoadedCount = 0
+local TotalModules = #ModuleList
+local LoadResults = {}
 
 for _, modName in ipairs(ModuleList) do
     task.spawn(function()
-        if LoadModule(modName) then
-            Loaded = Loaded + 1
-        end
+        local success = LoadModule(modName)
+        LoadResults[modName] = success
+        LoadedCount = LoadedCount + 1
     end)
 end
 
---// Wait a moment then activate first tab
-task.delay(1.5, function()
+--// Wait for all modules then activate first tab
+task.delay(2, function()
+    -- Count successful loads safely
+    local successCount = 0
+    for _, v in pairs(LoadResults) do
+        if v then successCount = successCount + 1 end
+    end
+
+    StatusLabel.Text = successCount .. "/" .. TotalModules .. " loaded"
+    StatusLabel.TextColor3 = successCount == TotalModules and Colors.ToggleOn or Colors.Error
+
+    -- Activate first tab
     local firstTab = nil
     for _, page in pairs(Content:GetChildren()) do
         if page:IsA("ScrollingFrame") then
@@ -616,9 +655,6 @@ task.delay(1.5, function()
             end
         end
     end
-
-    StatusLabel.Text = Loaded .. "/" .. #ModuleList .. " loaded"
-    StatusLabel.TextColor3 = Colors.ToggleOn
 end)
 
 print("[ArsenalKit] Loader initialized. Press RightShift to toggle UI.")
