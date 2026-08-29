@@ -1,90 +1,188 @@
--- ArsenalKit Misc Module
--- Anti-AFK, hitbox expander
+-- ArsenalKit Movement Module
+-- Speed, bhop, inf jump, fly, noclip, 3rd person, desync
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local VirtualUser = game:GetService("VirtualUser")
+local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
 local ArsenalKit = _G.ArsenalKit
 if not ArsenalKit then return end
-if ArsenalKit.Features.MiscLoaded then return end
-ArsenalKit.Features.MiscLoaded = true
+if ArsenalKit.Features.MovementLoaded then return end
+ArsenalKit.Features.MovementLoaded = true
 
 local Settings = {
-    AntiAFK = false,
-    HitboxExpander = false,
-    HitboxSize = 5,
-    HitboxTransparency = 0.7
+    SpeedHack = false,
+    SpeedValue = 3,
+    BunnyHop = false,
+    InfiniteJump = false,
+    Fly = false,
+    FlyKey = Enum.KeyCode.F,
+    Noclip = false,
+    NoclipKey = Enum.KeyCode.N,
+    ThirdPerson = false,
+    ThirdPersonDist = 10,
+    Desync = false
 }
 
-local MiscTab = ArsenalKit:CreateTab("Misc")
+local FlyActive = false
+local NoclipActive = false
 
-ArsenalKit:CreateSection(MiscTab, "Utilities")
-ArsenalKit:CreateToggle(MiscTab, "Anti-AFK", false, function(state)
-    Settings.AntiAFK = state
+local MoveTab = ArsenalKit:CreateTab("Movement")
+
+ArsenalKit:CreateSection(MoveTab, "Speed")
+ArsenalKit:CreateToggle(MoveTab, "Speed Hack", false, function(state)
+    Settings.SpeedHack = state
+end)
+ArsenalKit:CreateSlider(MoveTab, "Speed Multiplier", 1, 10, 3, function(val)
+    Settings.SpeedValue = val
 end)
 
-ArsenalKit:CreateSection(MiscTab, "Hitbox Expander")
-ArsenalKit:CreateToggle(MiscTab, "Expand Hitboxes", false, function(state)
-    Settings.HitboxExpander = state
+ArsenalKit:CreateSection(MoveTab, "Jump")
+ArsenalKit:CreateToggle(MoveTab, "Bunny Hop", false, function(state)
+    Settings.BunnyHop = state
+end)
+ArsenalKit:CreateToggle(MoveTab, "Infinite Jump", false, function(state)
+    Settings.InfiniteJump = state
+end)
+
+ArsenalKit:CreateSection(MoveTab, "Flight")
+ArsenalKit:CreateToggle(MoveTab, "Fly", false, function(state)
+    Settings.Fly = state
+    FlyActive = state
+end)
+ArsenalKit:CreateKeybind(MoveTab, "Fly Key", Enum.KeyCode.F, function()
+    FlyActive = not FlyActive
+    Settings.Fly = FlyActive
+end)
+
+ArsenalKit:CreateSection(MoveTab, "Collision")
+ArsenalKit:CreateToggle(MoveTab, "Noclip", false, function(state)
+    Settings.Noclip = state
+    NoclipActive = state
+end)
+ArsenalKit:CreateKeybind(MoveTab, "Noclip Key", Enum.KeyCode.N, function()
+    NoclipActive = not NoclipActive
+    Settings.Noclip = NoclipActive
+end)
+
+ArsenalKit:CreateSection(MoveTab, "Camera")
+ArsenalKit:CreateToggle(MoveTab, "Third Person", false, function(state)
+    Settings.ThirdPerson = state
     if not state then
-        -- Reset all hitboxes
-        for _, player in pairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer then
-                local character = player.Character
-                if character then
-                    local head = character:FindFirstChild("Head")
-                    if head then
-                        head.Size = Vector3.new(2, 1, 1)
-                        head.Transparency = 0
-                        head.CanCollide = true
-                    end
-                end
+        LocalPlayer.CameraMode = Enum.CameraMode.LockFirstPerson
+    end
+end)
+ArsenalKit:CreateSlider(MoveTab, "Camera Distance", 3, 30, 10, function(val)
+    Settings.ThirdPersonDist = val
+end)
+
+ArsenalKit:CreateSection(MoveTab, "Desync")
+ArsenalKit:CreateToggle(MoveTab, "Desync", false, function(state)
+    Settings.Desync = state
+end)
+
+-- Infinite jump
+UserInputService.JumpRequest:Connect(function()
+    if Settings.InfiniteJump then
+        local character = LocalPlayer.Character
+        if character then
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
             end
         end
     end
 end)
 
-ArsenalKit:CreateSlider(MiscTab, "Hitbox Size", 2, 20, 5, function(val)
-    Settings.HitboxSize = val
-end)
+-- Movement loop
+local MoveConnection = RunService.Heartbeat:Connect(function()
+    local character = LocalPlayer.Character
+    if not character then return end
 
-ArsenalKit:CreateSlider(MiscTab, "Hitbox Transparency", 0, 100, 70, function(val)
-    Settings.HitboxTransparency = val / 100
-end)
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not hrp then return end
 
--- Anti-AFK
-LocalPlayer.Idled:Connect(function()
-    if Settings.AntiAFK then
-        VirtualUser:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
-        wait(1)
-        VirtualUser:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+    -- Speed hack
+    if Settings.SpeedHack then
+        local moveDir = humanoid.MoveDirection
+        if moveDir.Magnitude > 0 then
+            hrp.Velocity = Vector3.new(
+                moveDir.X * Settings.SpeedValue * 16,
+                hrp.Velocity.Y,
+                moveDir.Z * Settings.SpeedValue * 16
+            )
+        end
     end
-end)
 
--- Hitbox expander loop
-local MiscConnection = RunService.Heartbeat:Connect(function()
-    if Settings.HitboxExpander then
-        for _, player in pairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer then
-                local character = player.Character
-                if character then
-                    local head = character:FindFirstChild("Head")
-                    if head then
-                        head.Size = Vector3.new(Settings.HitboxSize, Settings.HitboxSize, Settings.HitboxSize)
-                        head.Transparency = Settings.HitboxTransparency
-                        head.CanCollide = false
-                        head.Material = Enum.Material.Neon
-                        head.Color = Color3.fromRGB(255, 0, 0)
-                    end
-                end
+    -- Bunny hop
+    if Settings.BunnyHop then
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            if humanoid.FloorMaterial ~= Enum.Material.Air then
+                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
             end
         end
     end
+
+    -- Fly
+    if FlyActive then
+        local speed = 50
+        local velocity = Vector3.new(0, 0, 0)
+
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+            velocity = velocity + workspace.CurrentCamera.CFrame.LookVector * speed
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+            velocity = velocity - workspace.CurrentCamera.CFrame.LookVector * speed
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+            velocity = velocity - workspace.CurrentCamera.CFrame.RightVector * speed
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+            velocity = velocity + workspace.CurrentCamera.CFrame.RightVector * speed
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            velocity = velocity + Vector3.new(0, speed, 0)
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+            velocity = velocity - Vector3.new(0, speed, 0)
+        end
+
+        hrp.Velocity = velocity
+        humanoid.PlatformStand = true
+    else
+        if humanoid.PlatformStand then
+            humanoid.PlatformStand = false
+        end
+    end
+
+    -- Noclip
+    if NoclipActive then
+        for _, part in pairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end
+
+    -- Third person
+    if Settings.ThirdPerson then
+        LocalPlayer.CameraMode = Enum.CameraMode.Classic
+        local camera = workspace.CurrentCamera
+        if camera then
+            local offset = camera.CFrame.LookVector * -Settings.ThirdPersonDist
+            camera.CFrame = camera.CFrame + offset
+        end
+    end
+
+    -- Desync (fake lag / position desync)
+    if Settings.Desync then
+        hrp.CFrame = hrp.CFrame * CFrame.new(math.random(-5, 5) / 10, 0, math.random(-5, 5) / 10)
+    end
 end)
 
-table.insert(ArsenalKit.Connections, MiscConnection)
+table.insert(ArsenalKit.Connections, MoveConnection)
 
-print("[ArsenalKit] Misc module loaded")
+print("[ArsenalKit] Movement module loaded")

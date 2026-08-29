@@ -1,289 +1,398 @@
--- ArsenalKit Weapon Module
--- No recoil, no spread, rapid fire, instant reload, gun color changer, weapon scanner
+-- ArsenalKit ESP Module
+-- Box, skeleton, name, health bar, tracers, chams
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
 local ArsenalKit = _G.ArsenalKit
 if not ArsenalKit then return end
-if ArsenalKit.Features.WeaponLoaded then return end
-ArsenalKit.Features.WeaponLoaded = true
+if ArsenalKit.Features.ESPLoaded then return end
+ArsenalKit.Features.ESPLoaded = true
 
 -- Settings
 local Settings = {
-    NoRecoil = false,
-    NoSpread = false,
-    RapidFire = false,
-    InstantReload = false,
-    InfiniteAmmo = false,
-    GunColor = false,
-    GunColorValue = Color3.fromRGB(0, 210, 255),
-    DebugMode = false
+    BoxESP = false,
+    Skeleton = false,
+    NameESP = false,
+    HealthBar = false,
+    Tracers = false,
+    Chams = false,
+    TeamCheck = true,
+    MaxDistance = 2000
 }
 
-local WeaponConnection = nil
-local ColorConnection = nil
-local OriginalValues = {}
+local ESPObjects = {}
+local ESPConnection = nil
 
 -- Create UI
-local WeaponTab = ArsenalKit:CreateTab("Weapon")
+local VisualsTab = ArsenalKit:CreateTab("Visuals")
 
-ArsenalKit:CreateSection(WeaponTab, "Weapon Mods")
-ArsenalKit:CreateToggle(WeaponTab, "No Recoil", false, function(state)
-    Settings.NoRecoil = state
+ArsenalKit:CreateSection(VisualsTab, "ESP")
+ArsenalKit:CreateToggle(VisualsTab, "Box ESP", false, function(state)
+    Settings.BoxESP = state
 end)
 
-ArsenalKit:CreateToggle(WeaponTab, "No Spread", false, function(state)
-    Settings.NoSpread = state
+ArsenalKit:CreateToggle(VisualsTab, "Skeleton", false, function(state)
+    Settings.Skeleton = state
 end)
 
-ArsenalKit:CreateToggle(WeaponTab, "Rapid Fire", false, function(state)
-    Settings.RapidFire = state
+ArsenalKit:CreateToggle(VisualsTab, "Name ESP", false, function(state)
+    Settings.NameESP = state
 end)
 
-ArsenalKit:CreateToggle(WeaponTab, "Instant Reload", false, function(state)
-    Settings.InstantReload = state
+ArsenalKit:CreateToggle(VisualsTab, "Health Bar", false, function(state)
+    Settings.HealthBar = state
 end)
 
-ArsenalKit:CreateToggle(WeaponTab, "Infinite Ammo", false, function(state)
-    Settings.InfiniteAmmo = state
+ArsenalKit:CreateToggle(VisualsTab, "Tracers", false, function(state)
+    Settings.Tracers = state
 end)
 
-ArsenalKit:CreateSection(WeaponTab, "Gun Color")
-ArsenalKit:CreateToggle(WeaponTab, "Enable Color", false, function(state)
-    Settings.GunColor = state
-end)
-
-ArsenalKit:CreateColorPicker(WeaponTab, "Gun Color", Color3.fromRGB(0, 210, 255), function(color)
-    Settings.GunColorValue = color
-end)
-
-ArsenalKit:CreateSection(WeaponTab, "Debug")
-ArsenalKit:CreateToggle(WeaponTab, "Debug Mode", false, function(state)
-    Settings.DebugMode = state
-end)
-
-ArsenalKit:CreateButton(WeaponTab, "Scan Current Weapon", function()
-    local character = LocalPlayer.Character
-    if not character then
-        print("[ArsenalKit] No character found")
-        return
-    end
-
-    local tool = character:FindFirstChildOfClass("Tool")
-    if not tool then
-        print("[ArsenalKit] No tool equipped")
-        return
-    end
-
-    print("[ArsenalKit] === WEAPON SCAN: " .. tool.Name .. " ===")
-
-    -- Scan all descendants
-    for _, desc in pairs(tool:GetDescendants()) do
-        if desc:IsA("BaseValue") then
-            print("[ArsenalKit] Value: " .. desc.Name .. " = " .. tostring(desc.Value) .. " (" .. desc.ClassName .. ")")
-        end
-        if desc:IsA("BasePart") then
-            print("[ArsenalKit] Part: " .. desc.Name .. " Color=" .. tostring(desc.Color))
-        end
-        -- Check attributes
-        for attrName, attrValue in pairs(desc:GetAttributes()) do
-            print("[ArsenalKit] Attribute: " .. desc.Name .. "." .. attrName .. " = " .. tostring(attrValue))
+ArsenalKit:CreateToggle(VisualsTab, "Chams", false, function(state)
+    Settings.Chams = state
+    for _, obj in pairs(ESPObjects) do
+        if obj.Cham then
+            obj.Cham.Enabled = state
         end
     end
-
-    -- Check tool attributes
-    for attrName, attrValue in pairs(tool:GetAttributes()) do
-        print("[ArsenalKit] Tool Attribute: " .. attrName .. " = " .. tostring(attrValue))
-    end
-
-    print("[ArsenalKit] === END SCAN ===")
 end)
 
--- Known Arsenal weapon names (common ones)
-local KnownWeapons = {
-    "M4A1", "AK-47", "Deagle", "AWP", "P90", "MAC-10", "AA-12", "SPAS-12",
-    "AUG A3", "M249", "SCAR-H", "SCAR-L", "G11", "FAMAS", "Galil",
-    "M1911", "Glock-18", "Python", "Luger", "Makarov", "Webley",
-    "MP5K", "MP7", "UMP-45", "P250", "Five-SeveN", "Tec-9",
-    "M40", "Dragunov", "Springfield Rifle", "SKS", "Mosin-Nagant",
-    "DB Shotgun", "Lever Shotgun", "Pump Shotgun", "Trench Gun",
-    "Minigun", "Gatling Gun", "MG36", "BAR", "M1919A6",
-    "Rocket Launcher", "RPG", "Railgun", "Laser Rifle", "Plasma Launcher",
-    "Crossbow", "Autobow", "Bow", "Golden Bow",
-    "Flamethrower", "Concussion Rifle", "Spellbook", "Firebrand",
-    "Golden Gun", "Windicator", "Hush Puppy", "Golden Hush Puppy",
-    "Tommy Gun", "Grease Gun", "STEN", "M3",
-    "R800", "Handcannon", "Hi-Power", "Pathbringer", "Peacemaker",
-    "Armament", "Dispensor", "Cone Launcher", "Acid Spitter",
-    "Nailgun", "Peppergun", "Ice Stars", "Sunflower Sun",
-    "Potassium Power", "Trash Can", "Literal Gun", "Falkour",
-    "XR15", "MK18", "M16A2", "M14", "Henry Rifle",
-    "DB Chauchat", "Inertial Shotgun", "MAG-7", "Nova",
-    "Sawed Off", "XM1014", "Benelli M4", "KSG-12",
-    "Dual LCRs", "Union Pistol", "FMG-9", "Micro Uzis",
-    "Uzi", "Vector", "KRISS", "Scorpion",
-    "Candy Cane Miniguns", "Peppermint Rifle", "Presents",
-    "Snowball", "Water Balloon", "Ultraball", "Trowel",
-    "PIZZA", "Machete", "Bat", "Pan", "Butterfly Knife",
-    "Brass Knuckles", "Fisticuffs", "Icicle", "Battle Axe",
-    "Musket", "G-19X", "Maxim-9", "Creagle", "Golden Creagle",
-    "Admin Launcher", "Influencer Launcher"
+ArsenalKit:CreateToggle(VisualsTab, "Team Check", true, function(state)
+    Settings.TeamCheck = state
+end)
+
+ArsenalKit:CreateSlider(VisualsTab, "Max Distance", 100, 5000, 2000, function(val)
+    Settings.MaxDistance = val
+end)
+
+-- Drawing functions
+local function NewDrawing(type, props)
+    local obj = Drawing.new(type)
+    for k, v in pairs(props or {}) do
+        obj[k] = v
+    end
+    return obj
+end
+
+local function GetCharacter(player)
+    return player.Character
+end
+
+local function GetHumanoid(character)
+    return character:FindFirstChildOfClass("Humanoid")
+end
+
+local function IsTeammate(player)
+    if not Settings.TeamCheck then return false end
+    return LocalPlayer.Team and player.Team and LocalPlayer.Team == player.Team
+end
+
+local function IsAlive(character)
+    local hum = GetHumanoid(character)
+    return hum and hum.Health > 0
+end
+
+local function GetColor(player)
+    if IsTeammate(player) then
+        return Color3.fromRGB(0, 255, 140)
+    else
+        return Color3.fromRGB(255, 70, 90)
+    end
+end
+
+local function GetHealthColor(health, maxHealth)
+    local ratio = health / maxHealth
+    return Color3.fromRGB(255 * (1 - ratio), 255 * ratio, 50)
+end
+
+-- Skeleton joints
+local SkeletonJoints = {
+    {"Head", "UpperTorso"},
+    {"UpperTorso", "RightUpperArm"},
+    {"RightUpperArm", "RightLowerArm"},
+    {"RightLowerArm", "RightHand"},
+    {"UpperTorso", "LeftUpperArm"},
+    {"LeftUpperArm", "LeftLowerArm"},
+    {"LeftLowerArm", "LeftHand"},
+    {"UpperTorso", "LowerTorso"},
+    {"LowerTorso", "RightUpperLeg"},
+    {"RightUpperLeg", "RightLowerLeg"},
+    {"RightLowerLeg", "RightFoot"},
+    {"LowerTorso", "LeftUpperLeg"},
+    {"LeftUpperLeg", "LeftLowerLeg"},
+    {"LeftLowerLeg", "LeftFoot"}
 }
 
--- Get current tool
-local function GetCurrentTool()
-    local character = LocalPlayer.Character
-    if not character then return nil end
-    return character:FindFirstChildOfClass("Tool")
+-- Create ESP for player
+local function CreateESP(player)
+    if player == LocalPlayer then return end
+    if ESPObjects[player] then return end
+
+    local obj = {
+        Player = player,
+        Box = NewDrawing("Square", {Thickness = 1.5, Filled = false, Visible = false}),
+        BoxOutline = NewDrawing("Square", {Thickness = 3, Filled = false, Visible = false, Color = Color3.fromRGB(0,0,0)}),
+        Name = NewDrawing("Text", {Size = 14, Center = true, Outline = true, Visible = false}),
+        HealthBar = NewDrawing("Square", {Thickness = 1, Filled = true, Visible = false}),
+        HealthBarOutline = NewDrawing("Square", {Thickness = 1, Filled = false, Visible = false, Color = Color3.fromRGB(0,0,0)}),
+        Tracer = NewDrawing("Line", {Thickness = 1.5, Visible = false}),
+        TracerOutline = NewDrawing("Line", {Thickness = 3, Visible = false, Color = Color3.fromRGB(0,0,0)}),
+        SkeletonLines = {},
+        Cham = nil
+    }
+
+    -- Create skeleton lines
+    for i = 1, #SkeletonJoints do
+        obj.SkeletonLines[i] = {
+            Line = NewDrawing("Line", {Thickness = 1.5, Visible = false}),
+            Outline = NewDrawing("Line", {Thickness = 3, Visible = false, Color = Color3.fromRGB(0,0,0)})
+        }
+    end
+
+    -- Create chams highlight
+    local highlight = Instance.new("Highlight")
+    highlight.FillColor = Color3.fromRGB(255, 0, 0)
+    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+    highlight.FillTransparency = 0.5
+    highlight.OutlineTransparency = 0
+    highlight.Enabled = false
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    obj.Cham = highlight
+
+    ESPObjects[player] = obj
 end
 
--- Apply gun color
-local function ApplyGunColor(tool)
-    if not tool then return end
-    if not Settings.GunColor then return end
+-- Remove ESP
+local function RemoveESP(player)
+    local obj = ESPObjects[player]
+    if not obj then return end
 
-    for _, part in pairs(tool:GetDescendants()) do
-        if part:IsA("BasePart") and part.Name ~= "Handle" then
-            part.Color = Settings.GunColorValue
-            part.Material = Enum.Material.Neon
+    obj.Box:Remove()
+    obj.BoxOutline:Remove()
+    obj.Name:Remove()
+    obj.HealthBar:Remove()
+    obj.HealthBarOutline:Remove()
+    obj.Tracer:Remove()
+    obj.TracerOutline:Remove()
+
+    for _, joint in pairs(obj.SkeletonLines) do
+        joint.Line:Remove()
+        joint.Outline:Remove()
+    end
+
+    if obj.Cham then
+        obj.Cham:Destroy()
+    end
+
+    ESPObjects[player] = nil
+end
+
+-- Update ESP
+local function UpdateESP()
+    for player, obj in pairs(ESPObjects) do
+        local character = GetCharacter(player)
+
+        if not character or not IsAlive(character) or player.Parent == nil then
+            obj.Box.Visible = false
+            obj.BoxOutline.Visible = false
+            obj.Name.Visible = false
+            obj.HealthBar.Visible = false
+            obj.HealthBarOutline.Visible = false
+            obj.Tracer.Visible = false
+            obj.TracerOutline.Visible = false
+            for _, joint in pairs(obj.SkeletonLines) do
+                joint.Line.Visible = false
+                joint.Outline.Visible = false
+            end
+            if obj.Cham then
+                obj.Cham.Enabled = false
+                obj.Cham.Adornee = nil
+            end
+            continue
         end
-    end
-end
 
--- Weapon mod loop
-WeaponConnection = RunService.Heartbeat:Connect(function()
-    local tool = GetCurrentTool()
-    if not tool then return end
+        local humanoid = GetHumanoid(character)
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        local head = character:FindFirstChild("Head")
 
-    -- Apply color
-    if Settings.GunColor then
-        ApplyGunColor(tool)
-    end
+        if not hrp or not head then
+            continue
+        end
 
-    -- Scan for weapon values
-    for _, desc in pairs(tool:GetDescendants()) do
-        if desc:IsA("NumberValue") or desc:IsA("IntValue") then
-            local name = desc.Name:lower()
-
-            -- No recoil
-            if Settings.NoRecoil then
-                if name:find("recoil") or name:find("kick") or name:find("rise") then
-                    if not OriginalValues[desc] then
-                        OriginalValues[desc] = desc.Value
-                    end
-                    desc.Value = 0
-                end
-            elseif OriginalValues[desc] then
-                desc.Value = OriginalValues[desc]
-                OriginalValues[desc] = nil
+        local distance = (hrp.Position - Camera.CFrame.Position).Magnitude
+        if distance > Settings.MaxDistance then
+            obj.Box.Visible = false
+            obj.BoxOutline.Visible = false
+            obj.Name.Visible = false
+            obj.HealthBar.Visible = false
+            obj.HealthBarOutline.Visible = false
+            obj.Tracer.Visible = false
+            obj.TracerOutline.Visible = false
+            for _, joint in pairs(obj.SkeletonLines) do
+                joint.Line.Visible = false
+                joint.Outline.Visible = false
             end
-
-            -- No spread
-            if Settings.NoSpread then
-                if name:find("spread") or name:find("accuracy") or name:find("cone") then
-                    if not OriginalValues[desc] then
-                        OriginalValues[desc] = desc.Value
-                    end
-                    desc.Value = 0
-                end
-            elseif OriginalValues[desc] then
-                desc.Value = OriginalValues[desc]
-                OriginalValues[desc] = nil
+            if obj.Cham then
+                obj.Cham.Enabled = false
             end
+            continue
+        end
 
-            -- Rapid fire
-            if Settings.RapidFire then
-                if name:find("firerate") or name:find("fire_rate") or name:find("rpm") or name:find("cooldown") then
-                    if not OriginalValues[desc] then
-                        OriginalValues[desc] = desc.Value
-                    end
-                    if name:find("cooldown") then
-                        desc.Value = 0.01
+        local color = GetColor(player)
+
+        -- Update chams
+        if obj.Cham then
+            obj.Cham.Adornee = character
+            obj.Cham.Enabled = Settings.Chams
+            obj.Cham.FillColor = color
+        end
+
+        -- Get bounding box
+        local torso = character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso")
+        if not torso then continue end
+
+        local rootPos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+        if not onScreen then
+            obj.Box.Visible = false
+            obj.BoxOutline.Visible = false
+            obj.Name.Visible = false
+            obj.HealthBar.Visible = false
+            obj.HealthBarOutline.Visible = false
+            obj.Tracer.Visible = false
+            obj.TracerOutline.Visible = false
+            for _, joint in pairs(obj.SkeletonLines) do
+                joint.Line.Visible = false
+                joint.Outline.Visible = false
+            end
+            continue
+        end
+
+        local headPos = Camera:WorldToViewportPoint(head.Position)
+        local legPos = Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3, 0))
+
+        local boxHeight = math.abs(headPos.Y - legPos.Y)
+        local boxWidth = boxHeight * 0.6
+
+        local boxPos = Vector2.new(rootPos.X - boxWidth / 2, headPos.Y - boxHeight * 0.1)
+
+        -- Box ESP
+        if Settings.BoxESP then
+            obj.Box.Size = Vector2.new(boxWidth, boxHeight)
+            obj.Box.Position = boxPos
+            obj.Box.Color = color
+            obj.Box.Visible = true
+
+            obj.BoxOutline.Size = Vector2.new(boxWidth, boxHeight)
+            obj.BoxOutline.Position = boxPos
+            obj.BoxOutline.Visible = true
+        else
+            obj.Box.Visible = false
+            obj.BoxOutline.Visible = false
+        end
+
+        -- Name ESP
+        if Settings.NameESP then
+            obj.Name.Text = player.Name .. " [" .. math.floor(distance) .. "m]"
+            obj.Name.Position = Vector2.new(rootPos.X, boxPos.Y - 18)
+            obj.Name.Color = color
+            obj.Name.Visible = true
+        else
+            obj.Name.Visible = false
+        end
+
+        -- Health bar
+        if Settings.HealthBar and humanoid then
+            local health = humanoid.Health
+            local maxHealth = humanoid.MaxHealth
+            local healthPercent = health / maxHealth
+
+            local barWidth = 4
+            local barHeight = boxHeight
+            local barPos = Vector2.new(boxPos.X - barWidth - 4, boxPos.Y)
+
+            obj.HealthBarOutline.Size = Vector2.new(barWidth + 2, barHeight + 2)
+            obj.HealthBarOutline.Position = Vector2.new(barPos.X - 1, barPos.Y - 1)
+            obj.HealthBarOutline.Visible = true
+
+            obj.HealthBar.Size = Vector2.new(barWidth, barHeight * healthPercent)
+            obj.HealthBar.Position = Vector2.new(barPos.X, barPos.Y + barHeight * (1 - healthPercent))
+            obj.HealthBar.Color = GetHealthColor(health, maxHealth)
+            obj.HealthBar.Visible = true
+        else
+            obj.HealthBar.Visible = false
+            obj.HealthBarOutline.Visible = false
+        end
+
+        -- Tracers
+        if Settings.Tracers then
+            local screenBottom = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+            obj.Tracer.From = screenBottom
+            obj.Tracer.To = Vector2.new(rootPos.X, rootPos.Y)
+            obj.Tracer.Color = color
+            obj.Tracer.Visible = true
+
+            obj.TracerOutline.From = screenBottom
+            obj.TracerOutline.To = Vector2.new(rootPos.X, rootPos.Y)
+            obj.TracerOutline.Visible = true
+        else
+            obj.Tracer.Visible = false
+            obj.TracerOutline.Visible = false
+        end
+
+        -- Skeleton
+        if Settings.Skeleton then
+            for i, joint in ipairs(SkeletonJoints) do
+                local partA = character:FindFirstChild(joint[1])
+                local partB = character:FindFirstChild(joint[2])
+
+                if partA and partB then
+                    local posA, onA = Camera:WorldToViewportPoint(partA.Position)
+                    local posB, onB = Camera:WorldToViewportPoint(partB.Position)
+
+                    if onA and onB then
+                        local lineData = obj.SkeletonLines[i]
+                        lineData.Line.From = Vector2.new(posA.X, posA.Y)
+                        lineData.Line.To = Vector2.new(posB.X, posB.Y)
+                        lineData.Line.Color = color
+                        lineData.Line.Visible = true
+
+                        lineData.Outline.From = Vector2.new(posA.X, posA.Y)
+                        lineData.Outline.To = Vector2.new(posB.X, posB.Y)
+                        lineData.Outline.Visible = true
                     else
-                        desc.Value = 9999
+                        local lineData = obj.SkeletonLines[i]
+                        lineData.Line.Visible = false
+                        lineData.Outline.Visible = false
                     end
+                else
+                    local lineData = obj.SkeletonLines[i]
+                    lineData.Line.Visible = false
+                    lineData.Outline.Visible = false
                 end
-            elseif OriginalValues[desc] then
-                desc.Value = OriginalValues[desc]
-                OriginalValues[desc] = nil
             end
-
-            -- Instant reload
-            if Settings.InstantReload then
-                if name:find("reload") or name:find("reloadtime") then
-                    if not OriginalValues[desc] then
-                        OriginalValues[desc] = desc.Value
-                    end
-                    desc.Value = 0.01
-                end
-            elseif OriginalValues[desc] then
-                desc.Value = OriginalValues[desc]
-                OriginalValues[desc] = nil
-            end
-
-            -- Infinite ammo
-            if Settings.InfiniteAmmo then
-                if name:find("ammo") or name:find("clip") or name:find("mag") then
-                    if not OriginalValues[desc] then
-                        OriginalValues[desc] = desc.Value
-                    end
-                    desc.Value = 999
-                end
-            elseif OriginalValues[desc] then
-                desc.Value = OriginalValues[desc]
-                OriginalValues[desc] = nil
-            end
-        end
-
-        -- Check attributes too
-        if Settings.DebugMode then
-            for attrName, attrValue in pairs(desc:GetAttributes()) do
-                local attrLower = attrName:lower()
-                if attrLower:find("recoil") or attrLower:find("spread") or attrLower:find("firerate") or attrLower:find("reload") then
-                    print("[ArsenalKit] Attribute found: " .. desc.Name .. "." .. attrName .. " = " .. tostring(attrValue))
-                end
+        else
+            for _, joint in pairs(obj.SkeletonLines) do
+                joint.Line.Visible = false
+                joint.Outline.Visible = false
             end
         end
     end
+end
 
-    -- Tool-level attributes
-    for attrName, attrValue in pairs(tool:GetAttributes()) do
-        local attrLower = attrName:lower()
+-- Player added/removed
+Players.PlayerAdded:Connect(CreateESP)
+Players.PlayerRemoving:Connect(RemoveESP)
 
-        if Settings.NoRecoil and (attrLower:find("recoil") or attrLower:find("kick")) then
-            if not OriginalValues["tool_" .. attrName] then
-                OriginalValues["tool_" .. attrName] = attrValue
-            end
-            tool:SetAttribute(attrName, 0)
-        end
+for _, player in pairs(Players:GetPlayers()) do
+    CreateESP(player)
+end
 
-        if Settings.NoSpread and attrLower:find("spread") then
-            if not OriginalValues["tool_" .. attrName] then
-                OriginalValues["tool_" .. attrName] = attrValue
-            end
-            tool:SetAttribute(attrName, 0)
-        end
+-- ESP loop
+ESPConnection = RunService.RenderStepped:Connect(UpdateESP)
+table.insert(ArsenalKit.Connections, ESPConnection)
 
-        if Settings.RapidFire and (attrLower:find("firerate") or attrLower:find("rpm")) then
-            if not OriginalValues["tool_" .. attrName] then
-                OriginalValues["tool_" .. attrName] = attrValue
-            end
-            tool:SetAttribute(attrName, 9999)
-        end
-
-        if Settings.InstantReload and attrLower:find("reload") then
-            if not OriginalValues["tool_" .. attrName] then
-                OriginalValues["tool_" .. attrName] = attrValue
-            end
-            tool:SetAttribute(attrName, 0.01)
-        end
-    end
-end)
-
-table.insert(ArsenalKit.Connections, WeaponConnection)
-
-print("[ArsenalKit] Weapon module loaded")
-print("[ArsenalKit] Known Arsenal weapons: " .. #KnownWeapons .. " in database")
+print("[ArsenalKit] ESP module loaded")
