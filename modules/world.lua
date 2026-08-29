@@ -3,9 +3,7 @@
 
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
-local Players = game:GetService("Players")
 
-local LocalPlayer = Players.LocalPlayer
 local ArsenalKit = _G.ArsenalKit
 if not ArsenalKit then return end
 if ArsenalKit.Features.WorldLoaded then return end
@@ -20,10 +18,16 @@ local Settings = {
     FOVValue = 90
 }
 
-local WorldTab = ArsenalKit:CreateTab("World")
+local function AddConnection(conn)
+    table.insert(ArsenalKit.Connections, conn)
+    return conn
+end
 
-ArsenalKit:CreateSection(WorldTab, "World Mods")
-ArsenalKit:CreateToggle(WorldTab, "Fullbright", false, function(state)
+local WorldTab = ArsenalKit:CreateTab("World", "◆")
+
+local Section1 = ArsenalKit:CreateSection(WorldTab, "WORLD VISUALS", "Environment and world visualization options.")
+
+ArsenalKit:CreateToggle(Section1, "Fullbright", false, function(state)
     Settings.Fullbright = state
     if state then
         Lighting.Brightness = 10
@@ -38,7 +42,7 @@ ArsenalKit:CreateToggle(WorldTab, "Fullbright", false, function(state)
     end
 end)
 
-ArsenalKit:CreateToggle(WorldTab, "No Fog", false, function(state)
+ArsenalKit:CreateToggle(Section1, "No Fog", false, function(state)
     Settings.NoFog = state
     if state then
         Lighting.FogStart = 999999
@@ -47,13 +51,11 @@ ArsenalKit:CreateToggle(WorldTab, "No Fog", false, function(state)
     end
 end)
 
-ArsenalKit:CreateToggle(WorldTab, "Custom Sky", false, function(state)
+ArsenalKit:CreateToggle(Section1, "Custom Sky", false, function(state)
     Settings.CustomSky = state
     if state then
         for _, v in pairs(Lighting:GetChildren()) do
-            if v:IsA("Sky") then
-                v:Destroy()
-            end
+            if v:IsA("Sky") then v:Destroy() end
         end
         local sky = Instance.new("Sky")
         if Settings.SkyType == "Night" then
@@ -82,24 +84,22 @@ ArsenalKit:CreateToggle(WorldTab, "Custom Sky", false, function(state)
     end
 end)
 
-ArsenalKit:CreateDropdown(WorldTab, "Sky Type", {"Night", "Space", "Sunset"}, "Night", function(choice)
+ArsenalKit:CreateDropdown(Section1, "Sky Type", {"Night", "Space", "Sunset"}, "Night", function(choice)
     Settings.SkyType = choice
 end)
 
-ArsenalKit:CreateToggle(WorldTab, "FOV Changer", false, function(state)
+ArsenalKit:CreateToggle(Section1, "FOV Changer", false, function(state)
     Settings.FOVChanger = state
 end)
 
-ArsenalKit:CreateSlider(WorldTab, "FOV", 30, 140, 90, function(val)
+ArsenalKit:CreateSlider(Section1, "FOV", 30, 140, 90, function(val)
     Settings.FOVValue = val
 end)
 
-local WorldConnection = RunService.RenderStepped:Connect(function()
+local WorldConnection = AddConnection(RunService.RenderStepped:Connect(function()
     if Settings.FOVChanger then
         local camera = workspace.CurrentCamera
-        if camera then
-            camera.FieldOfView = Settings.FOVValue
-        end
+        if camera then camera.FieldOfView = Settings.FOVValue end
     end
     if Settings.NoFog then
         Lighting.FogStart = 999999
@@ -109,8 +109,6 @@ local WorldConnection = RunService.RenderStepped:Connect(function()
         Lighting.Brightness = 10
         Lighting.GlobalShadows = false
     end
-end)
-
-table.insert(ArsenalKit.Connections, WorldConnection)
+end))
 
 print("[ArsenalKit] World module loaded")
