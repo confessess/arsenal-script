@@ -1,4 +1,4 @@
---// ARSENALKIT v2.5 — Modular Loader
+--// ARSENALKIT v2.6 — Modular Loader (FIXED)
 --// Loader + UI Framework — loads modules from GitHub raw URLs
 
 local Players = game:GetService("Players")
@@ -450,11 +450,10 @@ local function CreatePage(Name)
 end
 
 --========================================================
--- NAV BUTTON — uses invisible click-capture overlay on top
+-- NAV BUTTON
 --========================================================
 
 local function NavButton(Name)
-    -- Container frame (visual background)
     local Container = Instance.new("Frame")
     Container.Name = Name .. "Container"
     Container.Size = UDim2.new(1, 0, 0, 40)
@@ -465,7 +464,6 @@ local function NavButton(Name)
     Container.Parent = Navigation
     Corner(Container, 10)
 
-    -- Active glow (behind everything)
     local ActiveGlow = Instance.new("Frame")
     ActiveGlow.Name = "ActiveGlow"
     ActiveGlow.Size = UDim2.new(1, 0, 1, 0)
@@ -476,7 +474,6 @@ local function NavButton(Name)
     ActiveGlow.Parent = Container
     Corner(ActiveGlow, 10)
 
-    -- Label (text)
     local Label = Instance.new("TextLabel")
     Label.Name = "Label"
     Label.Size = UDim2.new(1, -20, 1, 0)
@@ -486,7 +483,6 @@ local function NavButton(Name)
     Label.ZIndex = 7
     Label.Parent = Container
 
-    -- Indicator bar
     local Indicator = Instance.new("Frame")
     Indicator.Name = "Indicator"
     Indicator.Size = UDim2.fromOffset(3, 18)
@@ -498,7 +494,6 @@ local function NavButton(Name)
     Indicator.Parent = Container
     Corner(Indicator, 5)
 
-    -- INVISIBLE CLICK CAPTURE OVERLAY — this is the actual button
     local ClickCapture = Instance.new("TextButton")
     ClickCapture.Name = Name .. "Click"
     ClickCapture.Size = UDim2.new(1, 0, 1, 0)
@@ -508,7 +503,6 @@ local function NavButton(Name)
     ClickCapture.Parent = Container
     ClickCapture.AutoButtonColor = false
 
-    -- Hover effects on container (not click capture)
     Container.MouseEnter:Connect(function()
         if Container ~= CurrentButton then
             Tween(Container, .15, {BackgroundTransparency = .88}):Play()
@@ -522,46 +516,21 @@ local function NavButton(Name)
         end
     end)
 
-    -- Click handler
     ClickCapture.MouseButton1Click:Connect(function()
-        if CurrentPageName == Name then
-            return
-        end
-        if Switching then
-            return
-        end
-
+        if CurrentPageName == Name then return end
+        if Switching then return end
         Switching = true
-
         local targetTab = nil
         for _, t in pairs(ArsenalKit.Tabs) do
-            if t.Name == Name then
-                targetTab = t
-                break
-            end
+            if t.Name == Name then targetTab = t; break end
         end
-
-        if not targetTab then
-            Switching = false
-            return
-        end
-
-        local success, err = pcall(function()
-            ArsenalKit:SwitchTab(targetTab)
-        end)
-
-        if not success then
-            warn("[ArsenalKit] SwitchTab error: " .. tostring(err))
-        end
-
-        task.delay(.2, function()
-            Switching = false
-        end)
+        if not targetTab then Switching = false; return end
+        local success, err = pcall(function() ArsenalKit:SwitchTab(targetTab) end)
+        if not success then warn("[ArsenalKit] SwitchTab error: " .. tostring(err)) end
+        task.delay(.2, function() Switching = false end)
     end)
 
-    -- Store reference
     Buttons[Name] = Container
-
     return Container
 end
 
@@ -572,63 +541,35 @@ end
 function ArsenalKit:CreateTab(name, iconText)
     local btn = NavButton(name)
     local page, scroll = CreatePage(name)
-
-    local tab = {
-        Name = name,
-        Button = btn,
-        Page = page,
-        Content = scroll,
-    }
+    local tab = {Name = name, Button = btn, Page = page, Content = scroll}
     table.insert(ArsenalKit.Tabs, tab)
-
     return scroll
 end
 
 function ArsenalKit:SwitchTab(targetTab)
-    -- Deactivate current button visuals
     if CurrentButton then
         Tween(CurrentButton, 0.15, {BackgroundTransparency = 1}):Play()
         local glow = CurrentButton:FindFirstChild("ActiveGlow")
-        if glow then
-            Tween(glow, 0.15, {BackgroundTransparency = 1}):Play()
-        end
+        if glow then Tween(glow, 0.15, {BackgroundTransparency = 1}):Play() end
         local label = CurrentButton:FindFirstChild("Label")
-        if label then
-            Tween(label, 0.15, {TextColor3 = Theme.Muted}):Play()
-        end
+        if label then Tween(label, 0.15, {TextColor3 = Theme.Muted}):Play() end
         local indicator = CurrentButton:FindFirstChild("Indicator")
-        if indicator then
-            Tween(indicator, 0.15, {BackgroundTransparency = 1, Size = UDim2.fromOffset(3, 18)}):Play()
-        end
+        if indicator then Tween(indicator, 0.15, {BackgroundTransparency = 1, Size = UDim2.fromOffset(3, 18)}):Play() end
     end
-
-    -- Hide old page instantly
     if CurrentPageName and Pages[CurrentPageName] then
         Pages[CurrentPageName].Visible = false
     end
-
-    -- Set new current
     CurrentPageName = targetTab.Name
     CurrentButton = targetTab.Button
     ArsenalKit.ActiveTab = targetTab
-
-    -- Show new page instantly (no tween - reliable)
     targetTab.Page.Visible = true
-
-    -- Activate new button visuals
     Tween(targetTab.Button, 0.2, {BackgroundTransparency = 0.64}):Play()
     local glow = targetTab.Button:FindFirstChild("ActiveGlow")
-    if glow then
-        Tween(glow, 0.2, {BackgroundTransparency = 0.9}):Play()
-    end
+    if glow then Tween(glow, 0.2, {BackgroundTransparency = 0.9}):Play() end
     local label = targetTab.Button:FindFirstChild("Label")
-    if label then
-        Tween(label, 0.2, {TextColor3 = Theme.White}):Play()
-    end
+    if label then Tween(label, 0.2, {TextColor3 = Theme.White}):Play() end
     local indicator = targetTab.Button:FindFirstChild("Indicator")
-    if indicator then
-        Tween(indicator, 0.2, {BackgroundTransparency = 0, Size = UDim2.fromOffset(3, 25)}, Enum.EasingStyle.Back):Play()
-    end
+    if indicator then Tween(indicator, 0.2, {BackgroundTransparency = 0, Size = UDim2.fromOffset(3, 25)}, Enum.EasingStyle.Back):Play() end
 end
 
 function ArsenalKit:CreateSection(parent, titleText, descriptionText)
@@ -730,7 +671,6 @@ function ArsenalKit:CreateToggle(parent, text, default, callback)
         if callback then callback(State) end
     end
     Button.MouseButton1Click:Connect(Update)
-
     return {Frame = ToggleFrame, GetState = function() return State end, SetState = function(ns) if State ~= ns then Update() end end}
 end
 
@@ -818,7 +758,6 @@ function ArsenalKit:CreateSlider(parent, text, min, max, default, callback)
     AddConnection(UserInputService.InputEnded:Connect(function(Input)
         if Input.UserInputType == Enum.UserInputType.MouseButton1 then Dragging = false end
     end))
-
     return SliderFrame
 end
 
@@ -935,7 +874,6 @@ function ArsenalKit:CreateDropdown(parent, text, options, default, callback)
             if not InDropdown and not InOptions then OptionsFrame.Visible = false end
         end
     end))
-
     return DropdownFrame
 end
 
@@ -993,8 +931,7 @@ function ArsenalKit:CreateKeybind(parent, text, defaultKey, callback)
         local Connection
         Connection = UserInputService.InputBegan:Connect(function(Input)
             if Input.UserInputType == Enum.UserInputType.Keyboard then
-                CurrentKey = Input.KeyCode
-                Button.Text = Input.KeyCode.Name
+                CurrentKey = Input.KeyCode; Button.Text = Input.KeyCode.Name
             elseif Input.UserInputType == Enum.UserInputType.MouseButton1 then
                 CurrentKey = Input.UserInputType; Button.Text = "LMB"
             elseif Input.UserInputType == Enum.UserInputType.MouseButton2 then
@@ -1007,7 +944,6 @@ function ArsenalKit:CreateKeybind(parent, text, defaultKey, callback)
             if Connection then Connection:Disconnect() end
         end)
     end)
-
     return KeybindFrame
 end
 
@@ -1037,7 +973,6 @@ function ArsenalKit:CreateButton(parent, text, callback)
     Btn.MouseEnter:Connect(function() Tween(Btn, 0.2, {BackgroundTransparency = .1}):Play() end)
     Btn.MouseLeave:Connect(function() Tween(Btn, 0.2, {BackgroundTransparency = .25}):Play() end)
     Btn.MouseButton1Click:Connect(function() if callback then callback() end end)
-
     return ButtonFrame
 end
 
@@ -1047,11 +982,8 @@ AddConnection(UserInputService.InputBegan:Connect(function(Input, GameProcessed)
     for _, Bind in pairs(ArsenalKit.Keybinds) do
         local Match = false
         if typeof(Bind.Key) == "EnumItem" then
-            if Bind.Key.EnumType == Enum.KeyCode and Input.KeyCode == Bind.Key then
-                Match = true
-            elseif Bind.Key.EnumType == Enum.UserInputType and Input.UserInputType == Bind.Key then
-                Match = true
-            end
+            if Bind.Key.EnumType == Enum.KeyCode and Input.KeyCode == Bind.Key then Match = true
+            elseif Bind.Key.EnumType == Enum.UserInputType and Input.UserInputType == Bind.Key then Match = true end
         end
         if Match and Bind.Callback then Bind.Callback() end
     end
@@ -1117,7 +1049,7 @@ FooterLeft.Parent = Footer
 local FooterRight = Instance.new("TextLabel")
 FooterRight.Size = UDim2.fromOffset(220, 25)
 FooterRight.Position = UDim2.new(1, -220, 0, 0)
-Text(FooterRight, "ARSENALKIT  •  v2.5.0", 7, Theme.Muted, true)
+Text(FooterRight, "ARSENALKIT  •  v2.6.0", 7, Theme.Muted, true)
 FooterRight.TextXAlignment = Enum.TextXAlignment.Right
 FooterRight.TextYAlignment = Enum.TextYAlignment.Center
 FooterRight.ZIndex = 8
@@ -1196,7 +1128,7 @@ AddConnection(UserInputService.InputBegan:Connect(function(input, gameProcessed)
 end))
 
 --========================================================
--- MODULE LOADING
+-- MODULE LOADING (FIXED — nil-safe)
 --========================================================
 
 local BaseURL = "https://raw.githubusercontent.com/confessess/arsenal-script/main/modules/"
@@ -1216,21 +1148,17 @@ for _, moduleName in ipairs(ModuleList) do
     local success, err = pcall(function()
         local url = BaseURL .. moduleName .. ".lua?t=" .. tostring(tick())
         local source = game:HttpGet(url, true)
-        if source and #source > 50 then
-            local func = loadstring(source)
-            if func then
-                func()
-                LoadedCount = LoadedCount + 1
-                table.insert(ArsenalKit.LoadedModules, moduleName)
-                print("[ArsenalKit] Loaded module: " .. moduleName)
-            else
-                warn("[ArsenalKit] Failed to compile: " .. moduleName)
-                ArsenalKit.ModuleErrors[moduleName] = "Compile failed"
-            end
-        else
-            warn("[ArsenalKit] Empty source: " .. moduleName)
-            ArsenalKit.ModuleErrors[moduleName] = "Empty source"
+        if not source or #source <= 50 then
+            error("Empty or invalid source for " .. moduleName)
         end
+        local func = loadstring(source)
+        if typeof(func) ~= "function" then
+            error("loadstring returned nil for " .. moduleName .. " — source may be corrupted or URL unreachable")
+        end
+        func()
+        LoadedCount = LoadedCount + 1
+        table.insert(ArsenalKit.LoadedModules, moduleName)
+        print("[ArsenalKit] Loaded module: " .. moduleName)
     end)
     if not success then
         warn("[ArsenalKit] Error loading " .. moduleName .. ": " .. tostring(err))
@@ -1241,7 +1169,7 @@ end
 print("[ArsenalKit] Module loading complete — " .. LoadedCount .. "/" .. #ModuleList .. " loaded")
 
 --========================================================
--- SETTINGS TAB (created AFTER modules, so it's last)
+-- SETTINGS TAB
 --========================================================
 
 local SettingsTab = ArsenalKit:CreateTab("Settings")
@@ -1276,21 +1204,16 @@ ArsenalKit:CreateButton(SettingsSection, "Reload Modules", function()
     loadstring(game:HttpGet("https://raw.githubusercontent.com/confessess/arsenal-script/main/loader.lua", true))()
 end)
 
--- Debug / Module Status Section
 local DebugSection = ArsenalKit:CreateSection(SettingsTab, "MODULE STATUS", "Loaded modules and errors.")
 
 local StatusText = "Loaded: " .. LoadedCount .. "/" .. #ModuleList
 if LoadedCount > 0 then
-    StatusText = StatusText .. "
-Modules: " .. table.concat(ArsenalKit.LoadedModules, ", ")
+    StatusText = StatusText .. "\nModules: " .. table.concat(ArsenalKit.LoadedModules, ", ")
 end
 if next(ArsenalKit.ModuleErrors) then
-    StatusText = StatusText .. "
-
-Errors:"
+    StatusText = StatusText .. "\n\nErrors:"
     for name, err in pairs(ArsenalKit.ModuleErrors) do
-        StatusText = StatusText .. "
-" .. name .. ": " .. err
+        StatusText = StatusText .. "\n" .. name .. ": " .. err
     end
 end
 
@@ -1308,14 +1231,13 @@ StatusLabel.ZIndex = 7
 StatusLabel.Parent = DebugSection
 StatusLabel.AutomaticSize = Enum.AutomaticSize.Y
 
--- Info Section
 local InfoSection = ArsenalKit:CreateSection(SettingsTab, "INFO", "Script information and credits.")
 
 local VersionLabel = Instance.new("TextLabel")
 VersionLabel.Size = UDim2.new(1, -28, 0, 20)
 VersionLabel.Position = UDim2.fromOffset(14, 0)
 VersionLabel.BackgroundTransparency = 1
-VersionLabel.Text = "Version: v2.5.0"
+VersionLabel.Text = "Version: v2.6.0 (FIXED)"
 VersionLabel.TextColor3 = Theme.White
 VersionLabel.Font = Enum.Font.Gotham
 VersionLabel.TextSize = 11
@@ -1327,7 +1249,7 @@ local CreditLabel = Instance.new("TextLabel")
 CreditLabel.Size = UDim2.new(1, -28, 0, 20)
 CreditLabel.Position = UDim2.fromOffset(14, 22)
 CreditLabel.BackgroundTransparency = 1
-CreditLabel.Text = "Made by confessess"
+CreditLabel.Text = "Made by confessess | Fixed by ENI"
 CreditLabel.TextColor3 = Theme.Muted
 CreditLabel.Font = Enum.Font.Gotham
 CreditLabel.TextSize = 10
@@ -1343,22 +1265,14 @@ task.delay(0.15, function()
     if #ArsenalKit.Tabs > 1 then
         for _, tab in ipairs(ArsenalKit.Tabs) do
             if tab.Name ~= "Settings" then
-                local success, err = pcall(function()
-                    ArsenalKit:SwitchTab(tab)
-                end)
-                if not success then
-                    warn("[ArsenalKit] Auto-switch error: " .. tostring(err))
-                end
+                local success, err = pcall(function() ArsenalKit:SwitchTab(tab) end)
+                if not success then warn("[ArsenalKit] Auto-switch error: " .. tostring(err)) end
                 break
             end
         end
     elseif #ArsenalKit.Tabs == 1 then
-        local success, err = pcall(function()
-            ArsenalKit:SwitchTab(ArsenalKit.Tabs[1])
-        end)
-        if not success then
-            warn("[ArsenalKit] Auto-switch error: " .. tostring(err))
-        end
+        local success, err = pcall(function() ArsenalKit:SwitchTab(ArsenalKit.Tabs[1]) end)
+        if not success then warn("[ArsenalKit] Auto-switch error: " .. tostring(err)) end
     end
 end)
 
