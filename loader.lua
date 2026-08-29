@@ -1,11 +1,10 @@
---// ARSENALKIT v2.4 — Modular Loader
+--// ARSENALKIT v2.5 — Modular Loader
 --// Loader + UI Framework — loads modules from GitHub raw URLs
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local HttpService = game:GetService("HttpService")
 
 local Player = Players.LocalPlayer
 
@@ -28,6 +27,7 @@ getgenv().ArsenalKit = {
     Settings = {},
     ModuleErrors = {},
     LoadedModules = {},
+    DebugLog = {},
     Theme = {
         Background = Color3.fromRGB(4, 8, 16),
         Glass = Color3.fromRGB(8, 15, 28),
@@ -79,7 +79,6 @@ local function Text(Object, Value, Size, Color, Bold)
     Object.TextSize = Size
     Object.TextColor3 = Color or Theme.White
     Object.Font = Bold and Enum.Font.GothamBold or Enum.Font.Gotham
-    Object.TextTruncate = Enum.TextTruncate.AtEnd
     return Object
 end
 
@@ -414,7 +413,6 @@ local function CreatePage(Name)
     local Page = Instance.new("Frame")
     Page.Name = Name .. "Page"
     Page.Size = UDim2.fromScale(1, 1)
-    Page.Position = UDim2.fromOffset(14, 0)
     Page.BackgroundTransparency = 1
     Page.Visible = false
     Page.ZIndex = 5
@@ -452,23 +450,22 @@ local function CreatePage(Name)
 end
 
 --========================================================
--- NAV BUTTON (no icons, text only)
+-- NAV BUTTON — uses invisible click-capture overlay on top
 --========================================================
 
 local function NavButton(Name)
-    local Button = Instance.new("TextButton")
-    Button.Name = Name .. "Button"
-    Button.Size = UDim2.new(1, 0, 0, 40)
-    Button.BackgroundColor3 = Theme.Blue
-    Button.BackgroundTransparency = 1
-    Button.BorderSizePixel = 0
-    Button.Text = ""
-    Button.AutoButtonColor = false
-    Button.ZIndex = 6
-    Button.Parent = Navigation
-    Corner(Button, 10)
-    Buttons[Name] = Button
+    -- Container frame (visual background)
+    local Container = Instance.new("Frame")
+    Container.Name = Name .. "Container"
+    Container.Size = UDim2.new(1, 0, 0, 40)
+    Container.BackgroundColor3 = Theme.Blue
+    Container.BackgroundTransparency = 1
+    Container.BorderSizePixel = 0
+    Container.ZIndex = 6
+    Container.Parent = Navigation
+    Corner(Container, 10)
 
+    -- Active glow (behind everything)
     local ActiveGlow = Instance.new("Frame")
     ActiveGlow.Name = "ActiveGlow"
     ActiveGlow.Size = UDim2.new(1, 0, 1, 0)
@@ -476,18 +473,20 @@ local function NavButton(Name)
     ActiveGlow.BackgroundTransparency = 1
     ActiveGlow.BorderSizePixel = 0
     ActiveGlow.ZIndex = 6
-    ActiveGlow.Parent = Button
+    ActiveGlow.Parent = Container
     Corner(ActiveGlow, 10)
 
+    -- Label (text)
     local Label = Instance.new("TextLabel")
     Label.Name = "Label"
     Label.Size = UDim2.new(1, -20, 1, 0)
     Label.Position = UDim2.fromOffset(14, 0)
     Text(Label, Name, 10, Theme.Muted, true)
     Label.TextYAlignment = Enum.TextYAlignment.Center
-    Label.ZIndex = 8
-    Label.Parent = Button
+    Label.ZIndex = 7
+    Label.Parent = Container
 
+    -- Indicator bar
     local Indicator = Instance.new("Frame")
     Indicator.Name = "Indicator"
     Indicator.Size = UDim2.fromOffset(3, 18)
@@ -495,43 +494,75 @@ local function NavButton(Name)
     Indicator.BackgroundColor3 = Theme.Cyan
     Indicator.BackgroundTransparency = 1
     Indicator.BorderSizePixel = 0
-    Indicator.ZIndex = 9
-    Indicator.Parent = Button
+    Indicator.ZIndex = 8
+    Indicator.Parent = Container
     Corner(Indicator, 5)
 
-    Button.MouseEnter:Connect(function()
-        if Button ~= CurrentButton then
-            Tween(Button, .15, {BackgroundTransparency = .88}):Play()
+    -- INVISIBLE CLICK CAPTURE OVERLAY — this is the actual button
+    local ClickCapture = Instance.new("TextButton")
+    ClickCapture.Name = Name .. "Click"
+    ClickCapture.Size = UDim2.new(1, 0, 1, 0)
+    ClickCapture.BackgroundTransparency = 1
+    ClickCapture.Text = ""
+    ClickCapture.ZIndex = 100
+    ClickCapture.Parent = Container
+    ClickCapture.AutoButtonColor = false
+
+    -- Hover effects on container (not click capture)
+    Container.MouseEnter:Connect(function()
+        if Container ~= CurrentButton then
+            Tween(Container, .15, {BackgroundTransparency = .88}):Play()
             Tween(Label, .15, {TextColor3 = Theme.Cyan}):Play()
         end
     end)
-    Button.MouseLeave:Connect(function()
-        if Button ~= CurrentButton then
-            Tween(Button, .15, {BackgroundTransparency = 1}):Play()
+    Container.MouseLeave:Connect(function()
+        if Container ~= CurrentButton then
+            Tween(Container, .15, {BackgroundTransparency = 1}):Play()
             Tween(Label, .15, {TextColor3 = Theme.Muted}):Play()
         end
     end)
 
-    Button.MouseButton1Click:Connect(function()
-        if CurrentPageName == Name or Switching then return end
+    -- Click handler
+    ClickCapture.MouseButton1Click:Connect(function()
+        if CurrentPageName == Name then
+            return
+        end
+        if Switching then
+            return
+        end
+
         Switching = true
 
         local targetTab = nil
         for _, t in pairs(ArsenalKit.Tabs) do
-            if t.Name == Name then targetTab = t; break end
+            if t.Name == Name then
+                targetTab = t
+                break
+            end
         end
-        if not targetTab then Switching = false; return end
+
+        if not targetTab then
+            Switching = false
+            return
+        end
 
         local success, err = pcall(function()
             ArsenalKit:SwitchTab(targetTab)
         end)
+
         if not success then
             warn("[ArsenalKit] SwitchTab error: " .. tostring(err))
         end
-        task.delay(.25, function() Switching = false end)
+
+        task.delay(.2, function()
+            Switching = false
+        end)
     end)
 
-    return Button
+    -- Store reference
+    Buttons[Name] = Container
+
+    return Container
 end
 
 --========================================================
@@ -554,21 +585,26 @@ function ArsenalKit:CreateTab(name, iconText)
 end
 
 function ArsenalKit:SwitchTab(targetTab)
-    -- Deactivate current
+    -- Deactivate current button visuals
     if CurrentButton then
-        Tween(CurrentButton, 0.2, {BackgroundTransparency = 1}):Play()
+        Tween(CurrentButton, 0.15, {BackgroundTransparency = 1}):Play()
         local glow = CurrentButton:FindFirstChild("ActiveGlow")
-        if glow then Tween(glow, 0.2, {BackgroundTransparency = 1}):Play() end
+        if glow then
+            Tween(glow, 0.15, {BackgroundTransparency = 1}):Play()
+        end
         local label = CurrentButton:FindFirstChild("Label")
-        if label then Tween(label, 0.2, {TextColor3 = Theme.Muted}):Play() end
+        if label then
+            Tween(label, 0.15, {TextColor3 = Theme.Muted}):Play()
+        end
         local indicator = CurrentButton:FindFirstChild("Indicator")
-        if indicator then Tween(indicator, 0.2, {BackgroundTransparency = 1, Size = UDim2.fromOffset(3, 18)}):Play() end
+        if indicator then
+            Tween(indicator, 0.15, {BackgroundTransparency = 1, Size = UDim2.fromOffset(3, 18)}):Play()
+        end
     end
 
-    -- Hide old page
+    -- Hide old page instantly
     if CurrentPageName and Pages[CurrentPageName] then
         Pages[CurrentPageName].Visible = false
-        Pages[CurrentPageName].Position = UDim2.fromOffset(14, 0)
     end
 
     -- Set new current
@@ -576,19 +612,23 @@ function ArsenalKit:SwitchTab(targetTab)
     CurrentButton = targetTab.Button
     ArsenalKit.ActiveTab = targetTab
 
-    -- Show new page with slide-in
+    -- Show new page instantly (no tween - reliable)
     targetTab.Page.Visible = true
-    targetTab.Page.Position = UDim2.fromOffset(14, 0)
-    Tween(targetTab.Page, 0.3, {Position = UDim2.fromOffset(0, 0)}, Enum.EasingStyle.Quint):Play()
 
-    -- Activate button visuals
-    Tween(targetTab.Button, 0.22, {BackgroundTransparency = 0.64}):Play()
+    -- Activate new button visuals
+    Tween(targetTab.Button, 0.2, {BackgroundTransparency = 0.64}):Play()
     local glow = targetTab.Button:FindFirstChild("ActiveGlow")
-    if glow then Tween(glow, 0.25, {BackgroundTransparency = 0.9}):Play() end
+    if glow then
+        Tween(glow, 0.2, {BackgroundTransparency = 0.9}):Play()
+    end
     local label = targetTab.Button:FindFirstChild("Label")
-    if label then Tween(label, 0.22, {TextColor3 = Theme.White}):Play() end
+    if label then
+        Tween(label, 0.2, {TextColor3 = Theme.White}):Play()
+    end
     local indicator = targetTab.Button:FindFirstChild("Indicator")
-    if indicator then Tween(indicator, 0.25, {BackgroundTransparency = 0, Size = UDim2.fromOffset(3, 25)}, Enum.EasingStyle.Back):Play() end
+    if indicator then
+        Tween(indicator, 0.2, {BackgroundTransparency = 0, Size = UDim2.fromOffset(3, 25)}, Enum.EasingStyle.Back):Play()
+    end
 end
 
 function ArsenalKit:CreateSection(parent, titleText, descriptionText)
@@ -1077,7 +1117,7 @@ FooterLeft.Parent = Footer
 local FooterRight = Instance.new("TextLabel")
 FooterRight.Size = UDim2.fromOffset(220, 25)
 FooterRight.Position = UDim2.new(1, -220, 0, 0)
-Text(FooterRight, "ARSENALKIT  •  v2.4.0", 7, Theme.Muted, true)
+Text(FooterRight, "ARSENALKIT  •  v2.5.0", 7, Theme.Muted, true)
 FooterRight.TextXAlignment = Enum.TextXAlignment.Right
 FooterRight.TextYAlignment = Enum.TextYAlignment.Center
 FooterRight.ZIndex = 8
@@ -1201,7 +1241,7 @@ end
 print("[ArsenalKit] Module loading complete — " .. LoadedCount .. "/" .. #ModuleList .. " loaded")
 
 --========================================================
--- SETTINGS TAB (created AFTER modules, so it's last in the list)
+-- SETTINGS TAB (created AFTER modules, so it's last)
 --========================================================
 
 local SettingsTab = ArsenalKit:CreateTab("Settings")
@@ -1241,12 +1281,16 @@ local DebugSection = ArsenalKit:CreateSection(SettingsTab, "MODULE STATUS", "Loa
 
 local StatusText = "Loaded: " .. LoadedCount .. "/" .. #ModuleList
 if LoadedCount > 0 then
-    StatusText = StatusText .. "\nModules: " .. table.concat(ArsenalKit.LoadedModules, ", ")
+    StatusText = StatusText .. "
+Modules: " .. table.concat(ArsenalKit.LoadedModules, ", ")
 end
 if next(ArsenalKit.ModuleErrors) then
-    StatusText = StatusText .. "\n\nErrors:"
+    StatusText = StatusText .. "
+
+Errors:"
     for name, err in pairs(ArsenalKit.ModuleErrors) do
-        StatusText = StatusText .. "\n" .. name .. ": " .. err
+        StatusText = StatusText .. "
+" .. name .. ": " .. err
     end
 end
 
@@ -1271,7 +1315,7 @@ local VersionLabel = Instance.new("TextLabel")
 VersionLabel.Size = UDim2.new(1, -28, 0, 20)
 VersionLabel.Position = UDim2.fromOffset(14, 0)
 VersionLabel.BackgroundTransparency = 1
-VersionLabel.Text = "Version: v2.4.0"
+VersionLabel.Text = "Version: v2.5.0"
 VersionLabel.TextColor3 = Theme.White
 VersionLabel.Font = Enum.Font.Gotham
 VersionLabel.TextSize = 11
@@ -1292,12 +1336,11 @@ CreditLabel.ZIndex = 7
 CreditLabel.Parent = InfoSection
 
 --========================================================
--- AUTO-SWITCH TO FIRST MODULE TAB (not Settings)
+-- AUTO-SWITCH TO FIRST MODULE TAB
 --========================================================
 
 task.delay(0.15, function()
     if #ArsenalKit.Tabs > 1 then
-        -- Switch to first non-Settings tab
         for _, tab in ipairs(ArsenalKit.Tabs) do
             if tab.Name ~= "Settings" then
                 local success, err = pcall(function()
@@ -1310,7 +1353,6 @@ task.delay(0.15, function()
             end
         end
     elseif #ArsenalKit.Tabs == 1 then
-        -- Only Settings loaded, switch to it
         local success, err = pcall(function()
             ArsenalKit:SwitchTab(ArsenalKit.Tabs[1])
         end)
