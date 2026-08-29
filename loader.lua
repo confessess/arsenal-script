@@ -1,4 +1,4 @@
---// ARSENALKIT v2.6 — Modular Loader (FIXED)
+--// ARSENALKIT v2.6 — Modular Loader (FIXED TABS)
 --// Loader + UI Framework — loads modules from GitHub raw URLs
 
 local Players = game:GetService("Players")
@@ -28,6 +28,11 @@ getgenv().ArsenalKit = {
     ModuleErrors = {},
     LoadedModules = {},
     DebugLog = {},
+    Pages = {},
+    Buttons = {},
+    CurrentPageName = nil,
+    CurrentButton = nil,
+    Switching = false,
     Theme = {
         Background = Color3.fromRGB(4, 8, 16),
         Glass = Color3.fromRGB(8, 15, 28),
@@ -400,14 +405,8 @@ Minimize.MouseButton1Click:Connect(function()
 end)
 
 --========================================================
--- PAGE SYSTEM
+-- PAGE SYSTEM (FIXED — all state in ArsenalKit table)
 --========================================================
-
-local Pages = {}
-local Buttons = {}
-local CurrentPageName = nil
-local CurrentButton = nil
-local Switching = false
 
 local function CreatePage(Name)
     local Page = Instance.new("Frame")
@@ -445,12 +444,12 @@ local function CreatePage(Name)
     end)
 
     Page.ScrollFrame = ScrollFrame
-    Pages[Name] = Page
+    ArsenalKit.Pages[Name] = Page
     return Page, ScrollFrame
 end
 
 --========================================================
--- NAV BUTTON
+-- NAV BUTTON (FIXED — stores reference in ArsenalKit.Buttons)
 --========================================================
 
 local function NavButton(Name)
@@ -504,33 +503,33 @@ local function NavButton(Name)
     ClickCapture.AutoButtonColor = false
 
     Container.MouseEnter:Connect(function()
-        if Container ~= CurrentButton then
+        if Container ~= ArsenalKit.CurrentButton then
             Tween(Container, .15, {BackgroundTransparency = .88}):Play()
             Tween(Label, .15, {TextColor3 = Theme.Cyan}):Play()
         end
     end)
     Container.MouseLeave:Connect(function()
-        if Container ~= CurrentButton then
+        if Container ~= ArsenalKit.CurrentButton then
             Tween(Container, .15, {BackgroundTransparency = 1}):Play()
             Tween(Label, .15, {TextColor3 = Theme.Muted}):Play()
         end
     end)
 
     ClickCapture.MouseButton1Click:Connect(function()
-        if CurrentPageName == Name then return end
-        if Switching then return end
-        Switching = true
+        if ArsenalKit.CurrentPageName == Name then return end
+        if ArsenalKit.Switching then return end
+        ArsenalKit.Switching = true
         local targetTab = nil
         for _, t in pairs(ArsenalKit.Tabs) do
             if t.Name == Name then targetTab = t; break end
         end
-        if not targetTab then Switching = false; return end
+        if not targetTab then ArsenalKit.Switching = false; return end
         local success, err = pcall(function() ArsenalKit:SwitchTab(targetTab) end)
         if not success then warn("[ArsenalKit] SwitchTab error: " .. tostring(err)) end
-        task.delay(.2, function() Switching = false end)
+        task.delay(.2, function() ArsenalKit.Switching = false end)
     end)
 
-    Buttons[Name] = Container
+    ArsenalKit.Buttons[Name] = Container
     return Container
 end
 
@@ -547,20 +546,20 @@ function ArsenalKit:CreateTab(name, iconText)
 end
 
 function ArsenalKit:SwitchTab(targetTab)
-    if CurrentButton then
-        Tween(CurrentButton, 0.15, {BackgroundTransparency = 1}):Play()
-        local glow = CurrentButton:FindFirstChild("ActiveGlow")
+    if ArsenalKit.CurrentButton then
+        Tween(ArsenalKit.CurrentButton, 0.15, {BackgroundTransparency = 1}):Play()
+        local glow = ArsenalKit.CurrentButton:FindFirstChild("ActiveGlow")
         if glow then Tween(glow, 0.15, {BackgroundTransparency = 1}):Play() end
-        local label = CurrentButton:FindFirstChild("Label")
+        local label = ArsenalKit.CurrentButton:FindFirstChild("Label")
         if label then Tween(label, 0.15, {TextColor3 = Theme.Muted}):Play() end
-        local indicator = CurrentButton:FindFirstChild("Indicator")
+        local indicator = ArsenalKit.CurrentButton:FindFirstChild("Indicator")
         if indicator then Tween(indicator, 0.15, {BackgroundTransparency = 1, Size = UDim2.fromOffset(3, 18)}):Play() end
     end
-    if CurrentPageName and Pages[CurrentPageName] then
-        Pages[CurrentPageName].Visible = false
+    if ArsenalKit.CurrentPageName and ArsenalKit.Pages[ArsenalKit.CurrentPageName] then
+        ArsenalKit.Pages[ArsenalKit.CurrentPageName].Visible = false
     end
-    CurrentPageName = targetTab.Name
-    CurrentButton = targetTab.Button
+    ArsenalKit.CurrentPageName = targetTab.Name
+    ArsenalKit.CurrentButton = targetTab.Button
     ArsenalKit.ActiveTab = targetTab
     targetTab.Page.Visible = true
     Tween(targetTab.Button, 0.2, {BackgroundTransparency = 0.64}):Play()
@@ -1153,7 +1152,7 @@ for _, moduleName in ipairs(ModuleList) do
         end
         local func = loadstring(source)
         if typeof(func) ~= "function" then
-            error("loadstring returned nil for " .. moduleName .. " — source may be corrupted or URL unreachable")
+            error("loadstring returned nil for " .. moduleName)
         end
         func()
         LoadedCount = LoadedCount + 1
