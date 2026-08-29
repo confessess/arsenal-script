@@ -4,6 +4,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -26,8 +27,58 @@ local function AddConnection(conn)
     return conn
 end
 
--- Weapon loop
+--========================================================
+-- GLOBAL WEAPON MODS (modifies ReplicatedStorage.Weapons directly)
+-- This is the method that actually works — modifies ALL weapons server-side
+--========================================================
+
+local function ApplyGlobalRapidFire()
+    if not Settings.RapidFire then return end
+    local Weapons = ReplicatedStorage:FindFirstChild("Weapons")
+    if not Weapons then return end
+    for _, v in pairs(Weapons:GetDescendants()) do
+        if v.Name == "FireRate" or v.Name == "BFireRate" or v.Name == "RPM" then
+            if v:IsA("NumberValue") or v:IsA("IntValue") then
+                v.Value = 0.02
+            end
+        end
+    end
+end
+
+local function ApplyGlobalNoSpread()
+    if not Settings.NoSpread then return end
+    local Weapons = ReplicatedStorage:FindFirstChild("Weapons")
+    if not Weapons then return end
+    for _, v in pairs(Weapons:GetDescendants()) do
+        if v.Name == "Spread" or v.Name == "MinSpread" or v.Name == "MaxSpread" or v.Name == "BaseSpread" then
+            if v:IsA("NumberValue") or v:IsA("IntValue") then
+                v.Value = 0
+            end
+        end
+    end
+end
+
+local function ApplyGlobalInstantReload()
+    if not Settings.InstantReload then return end
+    local Weapons = ReplicatedStorage:FindFirstChild("Weapons")
+    if not Weapons then return end
+    for _, v in pairs(Weapons:GetDescendants()) do
+        if v.Name == "ReloadTime" or v.Name == "Reload" or v.Name == "ReloadSpeed" then
+            if v:IsA("NumberValue") or v:IsA("IntValue") then
+                v.Value = 0.01
+            end
+        end
+    end
+end
+
+-- Also apply to current tool for immediate effect
 local WeaponConnection = AddConnection(RunService.Heartbeat:Connect(function()
+    -- Global mods (modifies ALL weapons in ReplicatedStorage)
+    ApplyGlobalRapidFire()
+    ApplyGlobalNoSpread()
+    ApplyGlobalInstantReload()
+
+    -- Current tool mods (for immediate effect on equipped weapon)
     local character = LocalPlayer.Character
     if not character then return end
     local Tool = character:FindFirstChildOfClass("Tool")
@@ -43,18 +94,6 @@ local WeaponConnection = AddConnection(RunService.Heartbeat:Connect(function()
 
     local Config = Tool:FindFirstChild("Settings") or Tool:FindFirstChild("Config") or Tool:FindFirstChild("Values")
     if Config then
-        if Settings.NoSpread then
-            local Spread = Config:FindFirstChild("Spread") or Config:FindFirstChild("MinSpread") or Config:FindFirstChild("MaxSpread")
-            if Spread then Spread.Value = 0 end
-        end
-        if Settings.RapidFire then
-            local FireRate = Config:FindFirstChild("FireRate") or Config:FindFirstChild("RPM") or Config:FindFirstChild("Cooldown")
-            if FireRate and typeof(FireRate.Value) == "number" and FireRate.Value > 0 then FireRate.Value = 0.01 end
-        end
-        if Settings.InstantReload then
-            local ReloadTime = Config:FindFirstChild("ReloadTime") or Config:FindFirstChild("Reload")
-            if ReloadTime and typeof(ReloadTime.Value) == "number" then ReloadTime.Value = 0.01 end
-        end
         if Settings.NoRecoil then
             local Recoil = Config:FindFirstChild("Recoil") or Config:FindFirstChild("Kick") or Config:FindFirstChild("CameraRecoil")
             if Recoil then
@@ -73,15 +112,27 @@ AddConnection(RunService.RenderStepped:Connect(function()
     end
 end))
 
+--========================================================
 -- UI
+--========================================================
+
 local WeaponTab = ArsenalKit:CreateTab("Weapon", "⚡")
 local Section1 = ArsenalKit:CreateSection(WeaponTab, "WEAPON MODS", "Gun modifications and tweaks.")
 
 ArsenalKit:CreateToggle(Section1, "No Recoil", false, function(state) Settings.NoRecoil = state end)
-ArsenalKit:CreateToggle(Section1, "No Spread", false, function(state) Settings.NoSpread = state end)
-ArsenalKit:CreateToggle(Section1, "Rapid Fire", false, function(state) Settings.RapidFire = state end)
-ArsenalKit:CreateToggle(Section1, "Instant Reload", false, function(state) Settings.InstantReload = state end)
+ArsenalKit:CreateToggle(Section1, "No Spread", false, function(state)
+    Settings.NoSpread = state
+    if state then ApplyGlobalNoSpread() end
+end)
+ArsenalKit:CreateToggle(Section1, "Rapid Fire", false, function(state)
+    Settings.RapidFire = state
+    if state then ApplyGlobalRapidFire() end
+end)
+ArsenalKit:CreateToggle(Section1, "Instant Reload", false, function(state)
+    Settings.InstantReload = state
+    if state then ApplyGlobalInstantReload() end
+end)
 ArsenalKit:CreateToggle(Section1, "Auto Fire", false, function(state) Settings.AutoFire = state end)
 ArsenalKit:CreateToggle(Section1, "Infinite Ammo", false, function(state) Settings.InfiniteAmmo = state end)
 
-print("[ArsenalKit] Weapon module loaded")
+print("[ArsenalKit] Weapon module loaded (with global rapid fire)")

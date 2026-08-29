@@ -294,7 +294,7 @@ local function UpdateESP()
                     local lineData = obj.SkeletonLines[i]
                     if lineData then
                         if lineData.Line then lineData.Line.Visible = false end
-                        if lineData.Outline then lineData.Outline.Visible = false end
+                        if lineData.Outline then joint.Outline.Visible = false end
                     end
                 end
             end

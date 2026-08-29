@@ -264,91 +264,8 @@ StatusText.TextYAlignment = Enum.TextYAlignment.Center
 StatusText.ZIndex = 7
 StatusText.Parent = Status
 
--- Minimize
-local Minimized = false
-local Minimize = Instance.new("TextButton")
-Minimize.Size = UDim2.fromOffset(32, 32)
-Minimize.Position = UDim2.new(1, -70, 0, 15)
-Minimize.BackgroundColor3 = Theme.GlassLight
-Minimize.BackgroundTransparency = .05
-Minimize.BorderSizePixel = 0
-Minimize.Text = "−"
-Minimize.TextSize = 20
-Minimize.TextColor3 = Theme.Muted
-Minimize.Font = Enum.Font.GothamBold
-Minimize.AutoButtonColor = false
-Minimize.ZIndex = 7
-Minimize.Parent = Header
-Corner(Minimize, 10)
-Stroke(Minimize, .72, 2)
-
-Minimize.MouseEnter:Connect(function()
-    Tween(Minimize, .15, {BackgroundColor3 = Theme.Blue, TextColor3 = Color3.new(1,1,1)}):Play()
-end)
-Minimize.MouseLeave:Connect(function()
-    Tween(Minimize, .15, {BackgroundColor3 = Theme.GlassLight, TextColor3 = Theme.Muted}):Play()
-end)
-
-Minimize.MouseButton1Click:Connect(function()
-    Minimized = not Minimized
-    if Minimized then
-        -- Collapse
-        Tween(Main, .3, {Size = UDim2.fromOffset(940, 65), Position = UDim2.new(Main.Position.X.Scale, Main.Position.X.Offset, Main.Position.Y.Scale, Main.Position.Y.Offset)}):Play()
-        Tween(OuterGlow, .3, {BackgroundTransparency = 1}):Play()
-        Tween(InnerGlow, .3, {BackgroundTransparency = 1}):Play()
-        Body.Visible = false
-        Minimize.Text = "+"
-    else
-        -- Restore
-        Tween(Main, .3, {Size = UDim2.fromOffset(940, 560), Position = FinalPosition}):Play()
-        Tween(OuterGlow, .3, {BackgroundTransparency = .94}):Play()
-        Tween(InnerGlow, .3, {BackgroundTransparency = .97}):Play()
-        task.delay(.15, function()
-            Body.Visible = true
-        end)
-        Minimize.Text = "−"
-    end
-end)
-
--- Close
-local Close = Instance.new("TextButton")
-Close.Size = UDim2.fromOffset(32, 32)
-Close.Position = UDim2.new(1, -32, 0, 15)
-Close.BackgroundColor3 = Theme.GlassLight
-Close.BackgroundTransparency = .05
-Close.BorderSizePixel = 0
-Close.Text = "×"
-Close.TextSize = 18
-Close.TextColor3 = Theme.Muted
-Close.Font = Enum.Font.GothamBold
-Close.AutoButtonColor = false
-Close.ZIndex = 7
-Close.Parent = Header
-Corner(Close, 10)
-Stroke(Close, .72, 2)
-
-Close.MouseEnter:Connect(function()
-    Tween(Close, .15, {BackgroundColor3 = Theme.Red, TextColor3 = Color3.new(1,1,1)}):Play()
-end)
-Close.MouseLeave:Connect(function()
-    Tween(Close, .15, {BackgroundColor3 = Theme.GlassLight, TextColor3 = Theme.Muted}):Play()
-end)
-
-Close.MouseButton1Click:Connect(function()
-    Tween(Main, .3, {Size = UDim2.fromOffset(820, 490), BackgroundTransparency = 1}):Play()
-    Tween(OuterGlow, .3, {BackgroundTransparency = 1}):Play()
-    Tween(InnerGlow, .3, {BackgroundTransparency = 1}):Play()
-    task.wait(.3)
-    for _, conn in pairs(ArsenalKit.Connections) do
-        if typeof(conn) == "RBXScriptConnection" then conn:Disconnect() end
-    end
-    Gui:Destroy()
-    getgenv().ArsenalKit = nil
-    _G.ArsenalKit = nil
-end)
-
 --========================================================
--- BODY
+-- BODY (defined BEFORE minimize/close buttons reference it)
 --========================================================
 
 local Body = Instance.new("Frame")
@@ -396,6 +313,96 @@ Content.ClipsDescendants = true
 Content.ZIndex = 5
 Content.Parent = Body
 ArsenalKit.UI.Content = Content
+
+--========================================================
+-- MINIMIZE / CLOSE BUTTONS (Body is now defined above)
+--========================================================
+
+local Minimized = false
+local Minimize = Instance.new("TextButton")
+Minimize.Size = UDim2.fromOffset(32, 32)
+Minimize.Position = UDim2.new(1, -70, 0, 15)
+Minimize.BackgroundColor3 = Theme.GlassLight
+Minimize.BackgroundTransparency = .05
+Minimize.BorderSizePixel = 0
+Minimize.Text = "−"
+Minimize.TextSize = 20
+Minimize.TextColor3 = Theme.Muted
+Minimize.Font = Enum.Font.GothamBold
+Minimize.AutoButtonColor = false
+Minimize.ZIndex = 7
+Minimize.Parent = Header
+Corner(Minimize, 10)
+Stroke(Minimize, .72, 2)
+
+Minimize.MouseEnter:Connect(function()
+    Tween(Minimize, .15, {BackgroundColor3 = Theme.Blue, TextColor3 = Color3.new(1,1,1)}):Play()
+end)
+Minimize.MouseLeave:Connect(function()
+    Tween(Minimize, .15, {BackgroundColor3 = Theme.GlassLight, TextColor3 = Theme.Muted}):Play()
+end)
+
+-- Store restore position
+local RestoreSize = UDim2.fromOffset(940, 560)
+local RestorePosition = Main.Position
+
+Minimize.MouseButton1Click:Connect(function()
+    Minimized = not Minimized
+    if Minimized then
+        RestorePosition = Main.Position
+        RestoreSize = Main.Size
+        Tween(Main, .3, {Size = UDim2.fromOffset(940, 65), Position = UDim2.new(Main.Position.X.Scale, Main.Position.X.Offset, Main.Position.Y.Scale, Main.Position.Y.Offset)}):Play()
+        Tween(OuterGlow, .3, {BackgroundTransparency = 1}):Play()
+        Tween(InnerGlow, .3, {BackgroundTransparency = 1}):Play()
+        Body.Visible = false
+        Minimize.Text = "+"
+    else
+        Tween(Main, .3, {Size = RestoreSize, Position = RestorePosition}):Play()
+        Tween(OuterGlow, .3, {BackgroundTransparency = .94}):Play()
+        Tween(InnerGlow, .3, {BackgroundTransparency = .97}):Play()
+        task.delay(.15, function()
+            Body.Visible = true
+        end)
+        Minimize.Text = "−"
+    end
+end)
+
+-- Close
+local Close = Instance.new("TextButton")
+Close.Size = UDim2.fromOffset(32, 32)
+Close.Position = UDim2.new(1, -32, 0, 15)
+Close.BackgroundColor3 = Theme.GlassLight
+Close.BackgroundTransparency = .05
+Close.BorderSizePixel = 0
+Close.Text = "×"
+Close.TextSize = 18
+Close.TextColor3 = Theme.Muted
+Close.Font = Enum.Font.GothamBold
+Close.AutoButtonColor = false
+Close.ZIndex = 7
+Close.Parent = Header
+Corner(Close, 10)
+Stroke(Close, .72, 2)
+
+Close.MouseEnter:Connect(function()
+    Tween(Close, .15, {BackgroundColor3 = Theme.Red, TextColor3 = Color3.new(1,1,1)}):Play()
+end)
+Close.MouseLeave:Connect(function()
+    Tween(Close, .15, {BackgroundColor3 = Theme.GlassLight, TextColor3 = Theme.Muted}):Play()
+end)
+
+Close.MouseButton1Click:Connect(function()
+    Tween(Main, .3, {Size = UDim2.fromOffset(820, 490), BackgroundTransparency = 1}):Play()
+    Tween(OuterGlow, .3, {BackgroundTransparency = 1}):Play()
+    Tween(InnerGlow, .3, {BackgroundTransparency = 1}):Play()
+    task.wait(.3)
+    for _, conn in pairs(ArsenalKit.Connections) do
+        if typeof(conn) == "RBXScriptConnection" then conn:Disconnect() end
+    end
+    Gui:Destroy()
+    getgenv().ArsenalKit = nil
+    _G.ArsenalKit = nil
+end)
 
 --========================================================
 -- PAGE SYSTEM
@@ -1173,7 +1180,7 @@ local ModuleList = {
     "world",
     "esp",
     "movement",
-    "combat",
+    "aimbot",  -- FIXED: was "combat", file is "aimbot.lua"
     "weapon",
     "misc"
 }
