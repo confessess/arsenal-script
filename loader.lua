@@ -1,10 +1,11 @@
---// ARSENALKIT v2.2 — Modular Loader
+--// ARSENALKIT v2.3 — Modular Loader
 --// Loader + UI Framework — loads modules from GitHub raw URLs
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
 
 local Player = Players.LocalPlayer
 
@@ -24,6 +25,7 @@ getgenv().ArsenalKit = {
     UI = {},
     Features = {},
     Connections = {},
+    Settings = {},
     Theme = {
         Background = Color3.fromRGB(4, 8, 16),
         Glass = Color3.fromRGB(8, 15, 28),
@@ -39,7 +41,6 @@ getgenv().ArsenalKit = {
     }
 }
 
--- CRITICAL: Mirror to _G so loadstring modules can access it
 _G.ArsenalKit = getgenv().ArsenalKit
 
 local ArsenalKit = getgenv().ArsenalKit
@@ -235,7 +236,7 @@ Text(Subtitle, "ARSENAL  /  PREMIUM TOOLKIT", 8, Theme.Muted, true)
 Subtitle.ZIndex = 6
 Subtitle.Parent = Header
 
--- Status (moved further left to make room for buttons)
+-- Status
 local Status = Instance.new("Frame")
 Status.Size = UDim2.fromOffset(128, 32)
 Status.Position = UDim2.new(1, -260, 0, 15)
@@ -377,6 +378,27 @@ Content.Parent = Body
 ArsenalKit.UI.Content = Content
 
 --========================================================
+-- MINIMIZE LOGIC (single connection, Body exists now)
+--========================================================
+
+Minimize.MouseButton1Click:Connect(function()
+    Minimized = not Minimized
+    if Minimized then
+        Body.Visible = false
+        Tween(Main, .25, {Size = UDim2.fromOffset(940, 65)}):Play()
+        Tween(OuterGlow, .25, {BackgroundTransparency = 1}):Play()
+        Tween(InnerGlow, .25, {BackgroundTransparency = 1}):Play()
+        Minimize.Text = "+"
+    else
+        Body.Visible = true
+        Tween(Main, .25, {Size = UDim2.fromOffset(940, 560)}):Play()
+        Tween(OuterGlow, .25, {BackgroundTransparency = .94}):Play()
+        Tween(InnerGlow, .25, {BackgroundTransparency = .97}):Play()
+        Minimize.Text = "-"
+    end
+end)
+
+--========================================================
 -- PAGE SYSTEM
 --========================================================
 
@@ -390,7 +412,7 @@ local function CreatePage(Name)
     local Page = Instance.new("Frame")
     Page.Name = Name .. "Page"
     Page.Size = UDim2.fromScale(1, 1)
-    Page.Position = UDim2.fromOffset(0, 0)
+    Page.Position = UDim2.fromOffset(14, 0)
     Page.BackgroundTransparency = 1
     Page.Visible = false
     Page.ZIndex = 5
@@ -428,10 +450,10 @@ local function CreatePage(Name)
 end
 
 --========================================================
--- NAV BUTTON
+-- NAV BUTTON (no icons, text only)
 --========================================================
 
-local function NavButton(IconText, Name)
+local function NavButton(Name)
     local Button = Instance.new("TextButton")
     Button.Name = Name .. "Button"
     Button.Size = UDim2.new(1, 0, 0, 40)
@@ -455,20 +477,10 @@ local function NavButton(IconText, Name)
     ActiveGlow.Parent = Button
     Corner(ActiveGlow, 10)
 
-    local Icon = Instance.new("TextLabel")
-    Icon.Name = "Icon"
-    Icon.Size = UDim2.fromOffset(30, 40)
-    Icon.Position = UDim2.fromOffset(5, 0)
-    Text(Icon, IconText, 14, Theme.Muted, true)
-    Icon.TextXAlignment = Enum.TextXAlignment.Center
-    Icon.TextYAlignment = Enum.TextYAlignment.Center
-    Icon.ZIndex = 8
-    Icon.Parent = Button
-
     local Label = Instance.new("TextLabel")
     Label.Name = "Label"
-    Label.Size = UDim2.new(1, -43, 1, 0)
-    Label.Position = UDim2.fromOffset(41, 0)
+    Label.Size = UDim2.new(1, -20, 1, 0)
+    Label.Position = UDim2.fromOffset(14, 0)
     Text(Label, Name, 10, Theme.Muted, true)
     Label.TextYAlignment = Enum.TextYAlignment.Center
     Label.ZIndex = 8
@@ -488,13 +500,13 @@ local function NavButton(IconText, Name)
     Button.MouseEnter:Connect(function()
         if Button ~= CurrentButton then
             Tween(Button, .15, {BackgroundTransparency = .88}):Play()
-            Tween(Icon, .15, {TextColor3 = Theme.Cyan}):Play()
+            Tween(Label, .15, {TextColor3 = Theme.Cyan}):Play()
         end
     end)
     Button.MouseLeave:Connect(function()
         if Button ~= CurrentButton then
             Tween(Button, .15, {BackgroundTransparency = 1}):Play()
-            Tween(Icon, .15, {TextColor3 = Theme.Muted}):Play()
+            Tween(Label, .15, {TextColor3 = Theme.Muted}):Play()
         end
     end)
 
@@ -508,8 +520,13 @@ local function NavButton(IconText, Name)
         end
         if not targetTab then Switching = false; return end
 
-        ArsenalKit:SwitchTab(targetTab)
-        task.delay(.3, function() Switching = false end)
+        local success, err = pcall(function()
+            ArsenalKit:SwitchTab(targetTab)
+        end)
+        if not success then
+            warn("[ArsenalKit] SwitchTab error: " .. tostring(err))
+        end
+        task.delay(.25, function() Switching = false end)
     end)
 
     return Button
@@ -520,7 +537,7 @@ end
 --========================================================
 
 function ArsenalKit:CreateTab(name, iconText)
-    local btn = NavButton(iconText or "", name)
+    local btn = NavButton(name)
     local page, scroll = CreatePage(name)
 
     local tab = {
@@ -533,7 +550,12 @@ function ArsenalKit:CreateTab(name, iconText)
 
     if #ArsenalKit.Tabs == 1 then
         task.delay(0.15, function()
-            ArsenalKit:SwitchTab(tab)
+            local success, err = pcall(function()
+                ArsenalKit:SwitchTab(tab)
+            end)
+            if not success then
+                warn("[ArsenalKit] Auto-switch error: " .. tostring(err))
+            end
         end)
     end
 
@@ -541,29 +563,21 @@ function ArsenalKit:CreateTab(name, iconText)
 end
 
 function ArsenalKit:SwitchTab(targetTab)
-    -- Deactivate current tab visuals if any
+    -- Deactivate current
     if CurrentButton then
         Tween(CurrentButton, 0.2, {BackgroundTransparency = 1}):Play()
         local glow = CurrentButton:FindFirstChild("ActiveGlow")
         if glow then Tween(glow, 0.2, {BackgroundTransparency = 1}):Play() end
-        local icon = CurrentButton:FindFirstChild("Icon")
-        if icon then Tween(icon, 0.2, {TextColor3 = Theme.Muted}):Play() end
         local label = CurrentButton:FindFirstChild("Label")
         if label then Tween(label, 0.2, {TextColor3 = Theme.Muted}):Play() end
         local indicator = CurrentButton:FindFirstChild("Indicator")
         if indicator then Tween(indicator, 0.2, {BackgroundTransparency = 1, Size = UDim2.fromOffset(3, 18)}):Play() end
     end
 
-    -- Hide current page
+    -- Hide old page instantly (no tween - simpler, more reliable)
     if CurrentPageName and Pages[CurrentPageName] then
-        local oldPage = Pages[CurrentPageName]
-        Tween(oldPage, 0.16, {Position = UDim2.fromOffset(-12, 0)}):Play()
-        task.delay(0.13, function()
-            if oldPage then
-                oldPage.Visible = false
-                oldPage.Position = UDim2.fromOffset(0, 0)
-            end
-        end)
+        Pages[CurrentPageName].Visible = false
+        Pages[CurrentPageName].Position = UDim2.fromOffset(14, 0)
     end
 
     -- Set new current
@@ -571,17 +585,15 @@ function ArsenalKit:SwitchTab(targetTab)
     CurrentButton = targetTab.Button
     ArsenalKit.ActiveTab = targetTab
 
-    -- Show new page
+    -- Show new page with slide-in
     targetTab.Page.Visible = true
     targetTab.Page.Position = UDim2.fromOffset(14, 0)
     Tween(targetTab.Page, 0.3, {Position = UDim2.fromOffset(0, 0)}, Enum.EasingStyle.Quint):Play()
 
-    -- Activate new button visuals
+    -- Activate button visuals
     Tween(targetTab.Button, 0.22, {BackgroundTransparency = 0.64}):Play()
     local glow = targetTab.Button:FindFirstChild("ActiveGlow")
     if glow then Tween(glow, 0.25, {BackgroundTransparency = 0.9}):Play() end
-    local icon = targetTab.Button:FindFirstChild("Icon")
-    if icon then Tween(icon, 0.22, {TextColor3 = Theme.Cyan}):Play() end
     local label = targetTab.Button:FindFirstChild("Label")
     if label then Tween(label, 0.22, {TextColor3 = Theme.White}):Play() end
     local indicator = targetTab.Button:FindFirstChild("Indicator")
@@ -1074,7 +1086,7 @@ FooterLeft.Parent = Footer
 local FooterRight = Instance.new("TextLabel")
 FooterRight.Size = UDim2.fromOffset(220, 25)
 FooterRight.Position = UDim2.new(1, -220, 0, 0)
-Text(FooterRight, "ARSENALKIT  •  v2.2.0", 7, Theme.Muted, true)
+Text(FooterRight, "ARSENALKIT  •  v2.3.0", 7, Theme.Muted, true)
 FooterRight.TextXAlignment = Enum.TextXAlignment.Right
 FooterRight.TextYAlignment = Enum.TextYAlignment.Center
 FooterRight.ZIndex = 8
@@ -1122,31 +1134,6 @@ task.spawn(function()
 end)
 
 --========================================================
--- MINIMIZE LOGIC (must be after Body is created)
---========================================================
-
-Minimize.MouseButton1Click:Connect(function()
-    Minimized = not Minimized
-    if Minimized then
-        -- Hide everything below header
-        Body.Visible = false
-        -- Collapse main window to header height only
-        Tween(Main, .25, {Size = UDim2.fromOffset(940, 65)}):Play()
-        -- Hide glows
-        Tween(OuterGlow, .25, {BackgroundTransparency = 1}):Play()
-        Tween(InnerGlow, .25, {BackgroundTransparency = 1}):Play()
-        Minimize.Text = "+"
-    else
-        -- Restore
-        Body.Visible = true
-        Tween(Main, .25, {Size = UDim2.fromOffset(940, 560)}):Play()
-        Tween(OuterGlow, .25, {BackgroundTransparency = .94}):Play()
-        Tween(InnerGlow, .25, {BackgroundTransparency = .97}):Play()
-        Minimize.Text = "-"
-    end
-end)
-
---========================================================
 -- OPEN ANIMATION
 --========================================================
 
@@ -1178,17 +1165,82 @@ AddConnection(UserInputService.InputBegan:Connect(function(input, gameProcessed)
 end))
 
 --========================================================
+-- SETTINGS TAB (built-in, no module needed)
+--========================================================
+
+local SettingsTab = ArsenalKit:CreateTab("Settings")
+local SettingsSection = ArsenalKit:CreateSection(SettingsTab, "UI SETTINGS", "Customize the ArsenalKit interface.")
+
+-- UI Toggle Keybind
+ArsenalKit:CreateKeybind(SettingsSection, "UI Toggle Key", Enum.KeyCode.RightShift, function()
+    UIVisible = not UIVisible
+    Main.Visible = UIVisible
+    OuterGlow.Visible = UIVisible
+    InnerGlow.Visible = UIVisible
+    Backdrop.Visible = UIVisible
+end)
+
+-- Destroy UI button
+ArsenalKit:CreateButton(SettingsSection, "Destroy UI", function()
+    for _, conn in pairs(ArsenalKit.Connections) do
+        if typeof(conn) == "RBXScriptConnection" then conn:Disconnect() end
+    end
+    Gui:Destroy()
+    getgenv().ArsenalKit = nil
+    _G.ArsenalKit = nil
+end)
+
+-- Reload modules button
+ArsenalKit:CreateButton(SettingsSection, "Reload Modules", function()
+    for _, conn in pairs(ArsenalKit.Connections) do
+        if typeof(conn) == "RBXScriptConnection" then conn:Disconnect() end
+    end
+    ArsenalKit.Connections = {}
+    ArsenalKit.Tabs = {}
+    ArsenalKit.Keybinds = {}
+    ArsenalKit.Features = {}
+    Gui:Destroy()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/confessess/arsenal-script/main/loader.lua", true))()
+end)
+
+-- Module info section
+local InfoSection = ArsenalKit:CreateSection(SettingsTab, "INFO", "Script information and credits.")
+
+local VersionLabel = Instance.new("TextLabel")
+VersionLabel.Size = UDim2.new(1, -28, 0, 20)
+VersionLabel.Position = UDim2.fromOffset(14, 0)
+VersionLabel.BackgroundTransparency = 1
+VersionLabel.Text = "Version: v2.3.0"
+VersionLabel.TextColor3 = Theme.White
+VersionLabel.Font = Enum.Font.Gotham
+VersionLabel.TextSize = 11
+VersionLabel.TextXAlignment = Enum.TextXAlignment.Left
+VersionLabel.ZIndex = 7
+VersionLabel.Parent = InfoSection
+
+local CreditLabel = Instance.new("TextLabel")
+CreditLabel.Size = UDim2.new(1, -28, 0, 20)
+CreditLabel.Position = UDim2.fromOffset(14, 22)
+CreditLabel.BackgroundTransparency = 1
+CreditLabel.Text = "Made by confessess"
+CreditLabel.TextColor3 = Theme.Muted
+CreditLabel.Font = Enum.Font.Gotham
+CreditLabel.TextSize = 10
+CreditLabel.TextXAlignment = Enum.TextXAlignment.Left
+CreditLabel.ZIndex = 7
+CreditLabel.Parent = InfoSection
+
+--========================================================
 -- MODULE LOADING
 --========================================================
 
--- CHANGE THIS TO YOUR GITHUB RAW URL BASE
 local BaseURL = "https://raw.githubusercontent.com/confessess/arsenal-script/main/modules/"
 
 local ModuleList = {
     "world",
     "esp",
     "movement",
-    "combat",
+    "aimbot",
     "weapon",
     "misc"
 }
