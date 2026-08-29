@@ -484,7 +484,7 @@ end))
 -- UI
 --========================================================
 
-local CombatTab = ArsenalKit:CreateTab("Combat", "⚔")
+local CombatTab = ArsenalKit:CreateTab("Combat", "C")
 
 -- Aimbot Section
 local AimbotSection = ArsenalKit:CreateSection(CombatTab, "AIMBOT", "Mouse-movement aim assistance.")

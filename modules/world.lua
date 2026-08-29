@@ -23,7 +23,7 @@ local function AddConnection(conn)
     return conn
 end
 
-local WorldTab = ArsenalKit:CreateTab("World", "◆")
+local WorldTab = ArsenalKit:CreateTab("World", "W")
 
 local Section1 = ArsenalKit:CreateSection(WorldTab, "WORLD VISUALS", "Environment and world visualization options.")
 

@@ -1,4 +1,4 @@
---// ARSENALKIT v2.1 — Modular Loader
+--// ARSENALKIT v2.2 — Modular Loader
 --// Loader + UI Framework — loads modules from GitHub raw URLs
 
 local Players = game:GetService("Players")
@@ -235,10 +235,10 @@ Text(Subtitle, "ARSENAL  /  PREMIUM TOOLKIT", 8, Theme.Muted, true)
 Subtitle.ZIndex = 6
 Subtitle.Parent = Header
 
--- Status
+-- Status (moved further left to make room for buttons)
 local Status = Instance.new("Frame")
 Status.Size = UDim2.fromOffset(128, 32)
-Status.Position = UDim2.new(1, -170, 0, 15)
+Status.Position = UDim2.new(1, -260, 0, 15)
 Status.BackgroundColor3 = Theme.GlassLight
 Status.BackgroundTransparency = .05
 Status.BorderSizePixel = 0
@@ -264,8 +264,70 @@ StatusText.TextYAlignment = Enum.TextYAlignment.Center
 StatusText.ZIndex = 7
 StatusText.Parent = Status
 
+-- Minimize button
+local Minimized = false
+local Minimize = Instance.new("TextButton")
+Minimize.Size = UDim2.fromOffset(32, 32)
+Minimize.Position = UDim2.new(1, -120, 0, 15)
+Minimize.BackgroundColor3 = Theme.GlassLight
+Minimize.BackgroundTransparency = .05
+Minimize.BorderSizePixel = 0
+Minimize.Text = "-"
+Minimize.TextSize = 20
+Minimize.TextColor3 = Theme.Muted
+Minimize.Font = Enum.Font.GothamBold
+Minimize.AutoButtonColor = false
+Minimize.ZIndex = 7
+Minimize.Parent = Header
+Corner(Minimize, 10)
+Stroke(Minimize, .72, 2)
+
+Minimize.MouseEnter:Connect(function()
+    Tween(Minimize, .15, {BackgroundColor3 = Theme.Blue, TextColor3 = Color3.new(1,1,1)}):Play()
+end)
+Minimize.MouseLeave:Connect(function()
+    Tween(Minimize, .15, {BackgroundColor3 = Theme.GlassLight, TextColor3 = Theme.Muted}):Play()
+end)
+
+-- Close button
+local Close = Instance.new("TextButton")
+Close.Size = UDim2.fromOffset(32, 32)
+Close.Position = UDim2.new(1, -82, 0, 15)
+Close.BackgroundColor3 = Theme.GlassLight
+Close.BackgroundTransparency = .05
+Close.BorderSizePixel = 0
+Close.Text = "x"
+Close.TextSize = 18
+Close.TextColor3 = Theme.Muted
+Close.Font = Enum.Font.GothamBold
+Close.AutoButtonColor = false
+Close.ZIndex = 7
+Close.Parent = Header
+Corner(Close, 10)
+Stroke(Close, .72, 2)
+
+Close.MouseEnter:Connect(function()
+    Tween(Close, .15, {BackgroundColor3 = Theme.Red, TextColor3 = Color3.new(1,1,1)}):Play()
+end)
+Close.MouseLeave:Connect(function()
+    Tween(Close, .15, {BackgroundColor3 = Theme.GlassLight, TextColor3 = Theme.Muted}):Play()
+end)
+
+Close.MouseButton1Click:Connect(function()
+    Tween(Main, .3, {Size = UDim2.fromOffset(820, 490), BackgroundTransparency = 1}):Play()
+    Tween(OuterGlow, .3, {BackgroundTransparency = 1}):Play()
+    Tween(InnerGlow, .3, {BackgroundTransparency = 1}):Play()
+    task.wait(.3)
+    for _, conn in pairs(ArsenalKit.Connections) do
+        if typeof(conn) == "RBXScriptConnection" then conn:Disconnect() end
+    end
+    Gui:Destroy()
+    getgenv().ArsenalKit = nil
+    _G.ArsenalKit = nil
+end)
+
 --========================================================
--- BODY (defined BEFORE minimize/close buttons reference it)
+-- BODY
 --========================================================
 
 local Body = Instance.new("Frame")
@@ -315,102 +377,12 @@ Content.Parent = Body
 ArsenalKit.UI.Content = Content
 
 --========================================================
--- MINIMIZE / CLOSE BUTTONS (Body is now defined above)
---========================================================
-
-local Minimized = false
-local Minimize = Instance.new("TextButton")
-Minimize.Size = UDim2.fromOffset(32, 32)
-Minimize.Position = UDim2.new(1, -70, 0, 15)
-Minimize.BackgroundColor3 = Theme.GlassLight
-Minimize.BackgroundTransparency = .05
-Minimize.BorderSizePixel = 0
-Minimize.Text = "−"
-Minimize.TextSize = 20
-Minimize.TextColor3 = Theme.Muted
-Minimize.Font = Enum.Font.GothamBold
-Minimize.AutoButtonColor = false
-Minimize.ZIndex = 7
-Minimize.Parent = Header
-Corner(Minimize, 10)
-Stroke(Minimize, .72, 2)
-
-Minimize.MouseEnter:Connect(function()
-    Tween(Minimize, .15, {BackgroundColor3 = Theme.Blue, TextColor3 = Color3.new(1,1,1)}):Play()
-end)
-Minimize.MouseLeave:Connect(function()
-    Tween(Minimize, .15, {BackgroundColor3 = Theme.GlassLight, TextColor3 = Theme.Muted}):Play()
-end)
-
--- Store restore position
-local RestoreSize = UDim2.fromOffset(940, 560)
-local RestorePosition = Main.Position
-
-Minimize.MouseButton1Click:Connect(function()
-    Minimized = not Minimized
-    if Minimized then
-        RestorePosition = Main.Position
-        RestoreSize = Main.Size
-        Tween(Main, .3, {Size = UDim2.fromOffset(940, 65), Position = UDim2.new(Main.Position.X.Scale, Main.Position.X.Offset, Main.Position.Y.Scale, Main.Position.Y.Offset)}):Play()
-        Tween(OuterGlow, .3, {BackgroundTransparency = 1}):Play()
-        Tween(InnerGlow, .3, {BackgroundTransparency = 1}):Play()
-        Body.Visible = false
-        Minimize.Text = "+"
-    else
-        Tween(Main, .3, {Size = RestoreSize, Position = RestorePosition}):Play()
-        Tween(OuterGlow, .3, {BackgroundTransparency = .94}):Play()
-        Tween(InnerGlow, .3, {BackgroundTransparency = .97}):Play()
-        task.delay(.15, function()
-            Body.Visible = true
-        end)
-        Minimize.Text = "−"
-    end
-end)
-
--- Close
-local Close = Instance.new("TextButton")
-Close.Size = UDim2.fromOffset(32, 32)
-Close.Position = UDim2.new(1, -32, 0, 15)
-Close.BackgroundColor3 = Theme.GlassLight
-Close.BackgroundTransparency = .05
-Close.BorderSizePixel = 0
-Close.Text = "×"
-Close.TextSize = 18
-Close.TextColor3 = Theme.Muted
-Close.Font = Enum.Font.GothamBold
-Close.AutoButtonColor = false
-Close.ZIndex = 7
-Close.Parent = Header
-Corner(Close, 10)
-Stroke(Close, .72, 2)
-
-Close.MouseEnter:Connect(function()
-    Tween(Close, .15, {BackgroundColor3 = Theme.Red, TextColor3 = Color3.new(1,1,1)}):Play()
-end)
-Close.MouseLeave:Connect(function()
-    Tween(Close, .15, {BackgroundColor3 = Theme.GlassLight, TextColor3 = Theme.Muted}):Play()
-end)
-
-Close.MouseButton1Click:Connect(function()
-    Tween(Main, .3, {Size = UDim2.fromOffset(820, 490), BackgroundTransparency = 1}):Play()
-    Tween(OuterGlow, .3, {BackgroundTransparency = 1}):Play()
-    Tween(InnerGlow, .3, {BackgroundTransparency = 1}):Play()
-    task.wait(.3)
-    for _, conn in pairs(ArsenalKit.Connections) do
-        if typeof(conn) == "RBXScriptConnection" then conn:Disconnect() end
-    end
-    Gui:Destroy()
-    getgenv().ArsenalKit = nil
-    _G.ArsenalKit = nil
-end)
-
---========================================================
 -- PAGE SYSTEM
 --========================================================
 
 local Pages = {}
 local Buttons = {}
-local CurrentPage = nil
+local CurrentPageName = nil
 local CurrentButton = nil
 local Switching = false
 
@@ -527,7 +499,7 @@ local function NavButton(IconText, Name)
     end)
 
     Button.MouseButton1Click:Connect(function()
-        if CurrentPage == Name or Switching then return end
+        if CurrentPageName == Name or Switching then return end
         Switching = true
 
         local targetTab = nil
@@ -548,7 +520,7 @@ end
 --========================================================
 
 function ArsenalKit:CreateTab(name, iconText)
-    local btn = NavButton(iconText or "●", name)
+    local btn = NavButton(iconText or "", name)
     local page, scroll = CreatePage(name)
 
     local tab = {
@@ -569,31 +541,42 @@ function ArsenalKit:CreateTab(name, iconText)
 end
 
 function ArsenalKit:SwitchTab(targetTab)
-    -- Deactivate all tabs
-    for _, t in pairs(ArsenalKit.Tabs) do
-        t.Page.Visible = false
-        t.Page.Position = UDim2.fromOffset(0, 0)
-
-        Tween(t.Button, 0.2, {BackgroundTransparency = 1}):Play()
-        local glow = t.Button:FindFirstChild("ActiveGlow")
+    -- Deactivate current tab visuals if any
+    if CurrentButton then
+        Tween(CurrentButton, 0.2, {BackgroundTransparency = 1}):Play()
+        local glow = CurrentButton:FindFirstChild("ActiveGlow")
         if glow then Tween(glow, 0.2, {BackgroundTransparency = 1}):Play() end
-        local icon = t.Button:FindFirstChild("Icon")
+        local icon = CurrentButton:FindFirstChild("Icon")
         if icon then Tween(icon, 0.2, {TextColor3 = Theme.Muted}):Play() end
-        local label = t.Button:FindFirstChild("Label")
+        local label = CurrentButton:FindFirstChild("Label")
         if label then Tween(label, 0.2, {TextColor3 = Theme.Muted}):Play() end
-        local indicator = t.Button:FindFirstChild("Indicator")
+        local indicator = CurrentButton:FindFirstChild("Indicator")
         if indicator then Tween(indicator, 0.2, {BackgroundTransparency = 1, Size = UDim2.fromOffset(3, 18)}):Play() end
     end
 
-    -- Activate target
-    ArsenalKit.ActiveTab = targetTab
-    CurrentPage = targetTab.Name
-    CurrentButton = targetTab.Button
+    -- Hide current page
+    if CurrentPageName and Pages[CurrentPageName] then
+        local oldPage = Pages[CurrentPageName]
+        Tween(oldPage, 0.16, {Position = UDim2.fromOffset(-12, 0)}):Play()
+        task.delay(0.13, function()
+            if oldPage then
+                oldPage.Visible = false
+                oldPage.Position = UDim2.fromOffset(0, 0)
+            end
+        end)
+    end
 
+    -- Set new current
+    CurrentPageName = targetTab.Name
+    CurrentButton = targetTab.Button
+    ArsenalKit.ActiveTab = targetTab
+
+    -- Show new page
     targetTab.Page.Visible = true
     targetTab.Page.Position = UDim2.fromOffset(14, 0)
     Tween(targetTab.Page, 0.3, {Position = UDim2.fromOffset(0, 0)}, Enum.EasingStyle.Quint):Play()
 
+    -- Activate new button visuals
     Tween(targetTab.Button, 0.22, {BackgroundTransparency = 0.64}):Play()
     local glow = targetTab.Button:FindFirstChild("ActiveGlow")
     if glow then Tween(glow, 0.25, {BackgroundTransparency = 0.9}):Play() end
@@ -1091,7 +1074,7 @@ FooterLeft.Parent = Footer
 local FooterRight = Instance.new("TextLabel")
 FooterRight.Size = UDim2.fromOffset(220, 25)
 FooterRight.Position = UDim2.new(1, -220, 0, 0)
-Text(FooterRight, "ARSENALKIT  •  v2.1.0", 7, Theme.Muted, true)
+Text(FooterRight, "ARSENALKIT  •  v2.2.0", 7, Theme.Muted, true)
 FooterRight.TextXAlignment = Enum.TextXAlignment.Right
 FooterRight.TextYAlignment = Enum.TextYAlignment.Center
 FooterRight.ZIndex = 8
@@ -1139,6 +1122,31 @@ task.spawn(function()
 end)
 
 --========================================================
+-- MINIMIZE LOGIC (must be after Body is created)
+--========================================================
+
+Minimize.MouseButton1Click:Connect(function()
+    Minimized = not Minimized
+    if Minimized then
+        -- Hide everything below header
+        Body.Visible = false
+        -- Collapse main window to header height only
+        Tween(Main, .25, {Size = UDim2.fromOffset(940, 65)}):Play()
+        -- Hide glows
+        Tween(OuterGlow, .25, {BackgroundTransparency = 1}):Play()
+        Tween(InnerGlow, .25, {BackgroundTransparency = 1}):Play()
+        Minimize.Text = "+"
+    else
+        -- Restore
+        Body.Visible = true
+        Tween(Main, .25, {Size = UDim2.fromOffset(940, 560)}):Play()
+        Tween(OuterGlow, .25, {BackgroundTransparency = .94}):Play()
+        Tween(InnerGlow, .25, {BackgroundTransparency = .97}):Play()
+        Minimize.Text = "-"
+    end
+end)
+
+--========================================================
 -- OPEN ANIMATION
 --========================================================
 
@@ -1180,7 +1188,7 @@ local ModuleList = {
     "world",
     "esp",
     "movement",
-    "aimbot",  -- FIXED: was "combat", file is "aimbot.lua"
+    "combat",
     "weapon",
     "misc"
 }
