@@ -1,254 +1,188 @@
---// ArsenalKit Module: Movement v6
---// Fixed fly - only activates when toggled, proper cleanup
+-- ArsenalKit Movement Module
+-- Speed, bhop, inf jump, fly, noclip, 3rd person, desync
 
-local ArsenalKit = _G.ArsenalKit
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
+local ArsenalKit = _G.ArsenalKit
+if not ArsenalKit then return end
+if ArsenalKit.Features.MovementLoaded then return end
+ArsenalKit.Features.MovementLoaded = true
 
---// Prevent double-load
-if ArsenalKit.Modules and ArsenalKit.Modules.Movement then return end
-ArsenalKit.Modules = ArsenalKit.Modules or {}
-ArsenalKit.Modules.Movement = true
-
---// Settings
 local Settings = {
     SpeedHack = false,
-    SpeedKey = Enum.KeyCode.LeftShift,
-    SpeedMult = 2,
+    SpeedValue = 3,
     BunnyHop = false,
-    BunnyHopKey = Enum.KeyCode.Space,
     InfiniteJump = false,
-    InfJumpKey = Enum.KeyCode.Space,
     Fly = false,
     FlyKey = Enum.KeyCode.F,
-    FlySpeed = 50,
-    NoClip = false,
-    NoClipKey = Enum.KeyCode.N
+    Noclip = false,
+    NoclipKey = Enum.KeyCode.N,
+    ThirdPerson = false,
+    ThirdPersonDist = 10,
+    Desync = false
 }
 
---// State
-local FlyConnection = nil
-local SpeedConnection = nil
-local LastTool = nil
+local FlyActive = false
+local NoclipActive = false
 
---// Cleanup any existing body movers on load
-local function CleanupBodyMovers()
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    for _, child in ipairs(hrp:GetChildren()) do
-        if child:IsA("BodyVelocity") or child:IsA("BodyGyro") or child:IsA("AlignOrientation") or child:IsA("VectorForce") then
-            child:Destroy()
-        end
-    end
-end
+local MoveTab = ArsenalKit:CreateTab("Movement")
 
-CleanupBodyMovers()
-
---// Speed Hack
-local function StartSpeedHack()
-    if SpeedConnection then return end
-    SpeedConnection = RunService.Heartbeat:Connect(function()
-        local char = LocalPlayer.Character
-        if not char then return end
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if not humanoid then return end
-        if Settings.SpeedHack then
-            humanoid.WalkSpeed = 16 * Settings.SpeedMult
-        else
-            humanoid.WalkSpeed = 16
-        end
-    end)
-end
-
-StartSpeedHack()
-
---// Fly System - Using Velocity directly (no legacy body movers)
-local function StartFlyLoop()
-    if FlyConnection then return end
-    FlyConnection = RunService.RenderStepped:Connect(function()
-        if not Settings.Fly then return end
-        local char = LocalPlayer.Character
-        if not char then return end
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            humanoid.PlatformStand = true
-        end
-
-        local cam = Workspace.CurrentCamera
-        local moveDir = Vector3.new(0, 0, 0)
-
-        if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-            moveDir = moveDir + cam.CFrame.LookVector
-        end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-            moveDir = moveDir - cam.CFrame.LookVector
-        end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-            moveDir = moveDir - cam.CFrame.RightVector
-        end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-            moveDir = moveDir + cam.CFrame.RightVector
-        end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-            moveDir = moveDir + Vector3.new(0, 1, 0)
-        end
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-            moveDir = moveDir - Vector3.new(0, 1, 0)
-        end
-
-        if moveDir.Magnitude > 0 then
-            moveDir = moveDir.Unit * Settings.FlySpeed
-        end
-
-        hrp.Velocity = moveDir
-        hrp.RotVelocity = Vector3.new(0, 0, 0)
-    end)
-end
-
-local function StopFly()
-    Settings.Fly = false
-    local char = LocalPlayer.Character
-    if char then
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            hrp.Velocity = Vector3.new(0, 0, 0)
-        end
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            humanoid.PlatformStand = false
-        end
-    end
-end
-
-StartFlyLoop()
-
---// Bunny Hop
-RunService.Heartbeat:Connect(function()
-    if Settings.BunnyHop then
-        local char = LocalPlayer.Character
-        if not char then return end
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if not humanoid then return end
-        if UserInputService:IsKeyDown(Settings.BunnyHopKey) then
-            humanoid.Jump = true
-        end
-    end
+ArsenalKit:CreateSection(MoveTab, "Speed")
+ArsenalKit:CreateToggle(MoveTab, "Speed Hack", false, function(state)
+    Settings.SpeedHack = state
+end)
+ArsenalKit:CreateSlider(MoveTab, "Speed Multiplier", 1, 10, 3, function(val)
+    Settings.SpeedValue = val
 end)
 
---// Infinite Jump
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == Settings.InfJumpKey and Settings.InfiniteJump then
-        local char = LocalPlayer.Character
-        if char then
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                hrp.Velocity = Vector3.new(hrp.Velocity.X, 50, hrp.Velocity.Z)
+ArsenalKit:CreateSection(MoveTab, "Jump")
+ArsenalKit:CreateToggle(MoveTab, "Bunny Hop", false, function(state)
+    Settings.BunnyHop = state
+end)
+ArsenalKit:CreateToggle(MoveTab, "Infinite Jump", false, function(state)
+    Settings.InfiniteJump = state
+end)
+
+ArsenalKit:CreateSection(MoveTab, "Flight")
+ArsenalKit:CreateToggle(MoveTab, "Fly", false, function(state)
+    Settings.Fly = state
+    FlyActive = state
+end)
+ArsenalKit:CreateKeybind(MoveTab, "Fly Key", Enum.KeyCode.F, function()
+    FlyActive = not FlyActive
+    Settings.Fly = FlyActive
+end)
+
+ArsenalKit:CreateSection(MoveTab, "Collision")
+ArsenalKit:CreateToggle(MoveTab, "Noclip", false, function(state)
+    Settings.Noclip = state
+    NoclipActive = state
+end)
+ArsenalKit:CreateKeybind(MoveTab, "Noclip Key", Enum.KeyCode.N, function()
+    NoclipActive = not NoclipActive
+    Settings.Noclip = NoclipActive
+end)
+
+ArsenalKit:CreateSection(MoveTab, "Camera")
+ArsenalKit:CreateToggle(MoveTab, "Third Person", false, function(state)
+    Settings.ThirdPerson = state
+    if not state then
+        LocalPlayer.CameraMode = Enum.CameraMode.LockFirstPerson
+    end
+end)
+ArsenalKit:CreateSlider(MoveTab, "Camera Distance", 3, 30, 10, function(val)
+    Settings.ThirdPersonDist = val
+end)
+
+ArsenalKit:CreateSection(MoveTab, "Desync")
+ArsenalKit:CreateToggle(MoveTab, "Desync", false, function(state)
+    Settings.Desync = state
+end)
+
+-- Infinite jump
+UserInputService.JumpRequest:Connect(function()
+    if Settings.InfiniteJump then
+        local character = LocalPlayer.Character
+        if character then
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
             end
         end
     end
 end)
 
---// No Clip
-RunService.Heartbeat:Connect(function()
-    if Settings.NoClip then
-        local char = LocalPlayer.Character
-        if not char then return end
-        for _, part in ipairs(char:GetDescendants()) do
+-- Movement loop
+local MoveConnection = RunService.Heartbeat:Connect(function()
+    local character = LocalPlayer.Character
+    if not character then return end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not hrp then return end
+
+    -- Speed hack
+    if Settings.SpeedHack then
+        local moveDir = humanoid.MoveDirection
+        if moveDir.Magnitude > 0 then
+            hrp.Velocity = Vector3.new(
+                moveDir.X * Settings.SpeedValue * 16,
+                hrp.Velocity.Y,
+                moveDir.Z * Settings.SpeedValue * 16
+            )
+        end
+    end
+
+    -- Bunny hop
+    if Settings.BunnyHop then
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            if humanoid.FloorMaterial ~= Enum.Material.Air then
+                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end
+    end
+
+    -- Fly
+    if FlyActive then
+        local speed = 50
+        local velocity = Vector3.new(0, 0, 0)
+
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+            velocity = velocity + workspace.CurrentCamera.CFrame.LookVector * speed
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+            velocity = velocity - workspace.CurrentCamera.CFrame.LookVector * speed
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+            velocity = velocity - workspace.CurrentCamera.CFrame.RightVector * speed
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+            velocity = velocity + workspace.CurrentCamera.CFrame.RightVector * speed
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            velocity = velocity + Vector3.new(0, speed, 0)
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+            velocity = velocity - Vector3.new(0, speed, 0)
+        end
+
+        hrp.Velocity = velocity
+        humanoid.PlatformStand = true
+    else
+        if humanoid.PlatformStand then
+            humanoid.PlatformStand = false
+        end
+    end
+
+    -- Noclip
+    if NoclipActive then
+        for _, part in pairs(character:GetDescendants()) do
             if part:IsA("BasePart") then
                 part.CanCollide = false
             end
         end
     end
-end)
 
---// Build UI
-local Tab = ArsenalKit:CreateTab("Movement", "M")
-
-ArsenalKit:CreateSection(Tab, "Speed")
-
-ArsenalKit:CreateToggle(Tab, "Speed Hack", false, function(v)
-    Settings.SpeedHack = v
-end)
-
-ArsenalKit:CreateKeybind(Tab, "Speed Key", Settings.SpeedKey, function(key, pressed)
-    if pressed then
-        Settings.SpeedHack = not Settings.SpeedHack
-    else
-        Settings.SpeedKey = key
-    end
-end)
-
-ArsenalKit:CreateSlider(Tab, "Speed Multiplier", 1, 10, 2, function(v)
-    Settings.SpeedMult = v
-end)
-
-ArsenalKit:CreateSection(Tab, "Jump")
-
-ArsenalKit:CreateToggle(Tab, "Bunny Hop", false, function(v)
-    Settings.BunnyHop = v
-end)
-
-ArsenalKit:CreateKeybind(Tab, "BHop Key", Settings.BunnyHopKey, function(key, pressed)
-    if not pressed then
-        Settings.BunnyHopKey = key
-    end
-end)
-
-ArsenalKit:CreateToggle(Tab, "Infinite Jump", false, function(v)
-    Settings.InfiniteJump = v
-end)
-
-ArsenalKit:CreateKeybind(Tab, "InfJump Key", Settings.InfJumpKey, function(key, pressed)
-    if not pressed then
-        Settings.InfJumpKey = key
-    end
-end)
-
-ArsenalKit:CreateSection(Tab, "Flight")
-
-ArsenalKit:CreateToggle(Tab, "Fly", false, function(v)
-    Settings.Fly = v
-    if not v then
-        StopFly()
-    end
-end)
-
-ArsenalKit:CreateKeybind(Tab, "Fly Key", Settings.FlyKey, function(key, pressed)
-    if pressed then
-        Settings.Fly = not Settings.Fly
-        if not Settings.Fly then
-            StopFly()
+    -- Third person
+    if Settings.ThirdPerson then
+        LocalPlayer.CameraMode = Enum.CameraMode.Classic
+        local camera = workspace.CurrentCamera
+        if camera then
+            local offset = camera.CFrame.LookVector * -Settings.ThirdPersonDist
+            camera.CFrame = camera.CFrame + offset
         end
-    else
-        Settings.FlyKey = key
+    end
+
+    -- Desync (fake lag / position desync)
+    if Settings.Desync then
+        hrp.CFrame = hrp.CFrame * CFrame.new(math.random(-5, 5) / 10, 0, math.random(-5, 5) / 10)
     end
 end)
 
-ArsenalKit:CreateSlider(Tab, "Fly Speed", 10, 200, 50, function(v)
-    Settings.FlySpeed = v
-end)
+table.insert(ArsenalKit.Connections, MoveConnection)
 
-ArsenalKit:CreateSection(Tab, "Collision")
-
-ArsenalKit:CreateToggle(Tab, "No Clip", false, function(v)
-    Settings.NoClip = v
-end)
-
-ArsenalKit:CreateKeybind(Tab, "NoClip Key", Settings.NoClipKey, function(key, pressed)
-    if pressed then
-        Settings.NoClip = not Settings.NoClip
-    else
-        Settings.NoClipKey = key
-    end
-end)
-
-print("[ArsenalKit] Movement v6 loaded")
+print("[ArsenalKit] Movement module loaded")

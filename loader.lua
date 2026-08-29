@@ -1,719 +1,1087 @@
---// ArsenalKit Loader v6 - Clean, Cache-Busted, Working
-local BASE_URL = "https://raw.githubusercontent.com/confessess/arsenal-script/main"
-local CACHE_BUST = "?t=" .. tostring(tick())
+-- ArsenalKit Modular Loader v3.0
+-- Loader + UI Framework - loads modules from GitHub raw URLs
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
---// Colors
-local Colors = {
-    BG = Color3.fromRGB(22, 26, 36),
-    Surface = Color3.fromRGB(32, 38, 52),
-    SurfaceHover = Color3.fromRGB(42, 50, 68),
-    Accent = Color3.fromRGB(0, 170, 255),
-    AccentDark = Color3.fromRGB(0, 130, 200),
-    Text = Color3.fromRGB(240, 245, 255),
-    TextDim = Color3.fromRGB(150, 165, 190),
-    ToggleOn = Color3.fromRGB(0, 210, 100),
-    ToggleOff = Color3.fromRGB(55, 65, 85),
-    Error = Color3.fromRGB(220, 60, 60)
-}
-
---// Registry
-local ArsenalKit = {
-    Tabs = {},
-    Colors = Colors,
-    Tween = function(obj, props, dur)
-        TweenService:Create(obj, TweenInfo.new(dur or 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props):Play()
+-- Clean up old
+for _, gui in pairs(LocalPlayer:WaitForChild("PlayerGui"):GetChildren()) do
+    if gui.Name == "ArsenalKit" then
+        gui:Destroy()
     end
+end
+
+-- ArsenalKit API
+getgenv().ArsenalKit = {
+    Tabs = {},
+    ActiveTab = nil,
+    Keybinds = {},
+    UI = {},
+    BindMode = false,
+    BindCallback = nil,
+    Features = {},
+    Connections = {}
 }
-_G.ArsenalKit = ArsenalKit
 
---// Cleanup old
-for _, gui in ipairs(PlayerGui:GetChildren()) do
-    if gui.Name == "ArsenalKit" then gui:Destroy() end
+local ArsenalKit = getgenv().ArsenalKit
+
+-- Theme
+local Theme = {
+    Background = Color3.fromRGB(10, 14, 28),
+    Surface = Color3.fromRGB(18, 24, 44),
+    SurfaceHover = Color3.fromRGB(28, 36, 64),
+    Accent = Color3.fromRGB(0, 210, 255),
+    AccentSoft = Color3.fromRGB(0, 180, 220),
+    Text = Color3.fromRGB(235, 245, 255),
+    TextDim = Color3.fromRGB(140, 160, 190),
+    Border = Color3.fromRGB(50, 130, 255),
+    Positive = Color3.fromRGB(0, 255, 140),
+    Negative = Color3.fromRGB(255, 70, 90),
+    Track = Color3.fromRGB(35, 45, 70)
+}
+
+-- Utility
+local function Create(class, props)
+    local obj = Instance.new(class)
+    for k, v in pairs(props) do
+        if k ~= "Parent" then
+            obj[k] = v
+        end
+    end
+    if props.Parent then
+        obj.Parent = props.Parent
+    end
+    return obj
 end
 
---// Fetch with cache busting
-local function FetchModule(name)
-    local url = BASE_URL .. "/modules/" .. name .. ".lua" .. CACHE_BUST
-    local ok, result = pcall(function() return game:HttpGet(url, true) end)
-    if ok and result and #result > 50 then return result end
-    warn("[ArsenalKit] Failed: " .. name)
-    return nil
+local function Tween(obj, info, props)
+    local tween = TweenService:Create(obj, info, props)
+    tween:Play()
+    return tween
 end
 
-local function LoadModule(name)
-    local src = FetchModule(name)
-    if not src then return false end
-    local ok, err = pcall(function() loadstring(src)() end)
-    if ok then print("[ArsenalKit] Loaded: " .. name) return true end
-    warn("[ArsenalKit] Error " .. name .. ": " .. tostring(err))
-    return false
-end
+-- Main ScreenGui
+local ScreenGui = Create("ScreenGui", {
+    Name = "ArsenalKit",
+    Parent = LocalPlayer:WaitForChild("PlayerGui"),
+    ResetOnSpawn = false,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+    DisplayOrder = 999999
+})
 
---// ==========================
---// UI
---// ==========================
+ArsenalKit.UI.ScreenGui = ScreenGui
 
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "ArsenalKit"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.DisplayOrder = 999999
-ScreenGui.Parent = PlayerGui
+-- Main Frame
+local MainFrame = Create("Frame", {
+    Name = "MainFrame",
+    Parent = ScreenGui,
+    Size = UDim2.new(0, 620, 0, 440),
+    Position = UDim2.new(0.5, -310, 0.5, -220),
+    BackgroundColor3 = Theme.Background,
+    BackgroundTransparency = 0.12,
+    BorderSizePixel = 0,
+    ClipsDescendants = true,
+    Active = true
+})
 
-local Main = Instance.new("Frame")
-Main.Name = "Main"
-Main.Size = UDim2.new(0, 540, 0, 360)
-Main.Position = UDim2.new(0.5, -270, 0.5, -180)
-Main.BackgroundColor3 = Colors.BG
-Main.BorderSizePixel = 0
-Main.Parent = ScreenGui
+Create("UICorner", {
+    Parent = MainFrame,
+    CornerRadius = UDim.new(0, 16)
+})
 
-Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 8)
+Create("UIStroke", {
+    Parent = MainFrame,
+    Color = Theme.Border,
+    Thickness = 1.2,
+    Transparency = 0.5
+})
 
--- Shadow
-local Shadow = Instance.new("ImageLabel")
-Shadow.AnchorPoint = Vector2.new(0.5, 0.5)
-Shadow.Position = UDim2.new(0.5, 0, 0.5, 4)
-Shadow.Size = UDim2.new(1, 40, 1, 40)
-Shadow.BackgroundTransparency = 1
-Shadow.Image = "rbxassetid://5554236805"
-Shadow.ImageColor3 = Color3.new(0, 0, 0)
-Shadow.ImageTransparency = 0.6
-Shadow.ScaleType = Enum.ScaleType.Slice
-Shadow.SliceCenter = Rect.new(23, 23, 277, 277)
-Shadow.ZIndex = 0
-Shadow.Parent = Main
+-- Animated glow
+local Glow = Create("Frame", {
+    Name = "Glow",
+    Parent = MainFrame,
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundColor3 = Theme.Accent,
+    BackgroundTransparency = 0.94,
+    BorderSizePixel = 0,
+    ZIndex = 0
+})
+Create("UICorner", {
+    Parent = Glow,
+    CornerRadius = UDim.new(0, 16)
+})
+
+local GlowGrad = Create("UIGradient", {
+    Parent = Glow,
+    Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Theme.Accent),
+        ColorSequenceKeypoint.new(0.5, Theme.Background),
+        ColorSequenceKeypoint.new(1, Theme.AccentSoft)
+    }),
+    Rotation = 0,
+    Transparency = NumberSequence.new(0.96)
+})
+
+spawn(function()
+    local angle = 0
+    while MainFrame and MainFrame.Parent do
+        angle = (angle + 0.25) % 360
+        GlowGrad.Rotation = angle
+        RunService.RenderStepped:Wait()
+    end
+end)
 
 -- Title Bar
-local TitleBar = Instance.new("Frame")
-TitleBar.Size = UDim2.new(1, 0, 0, 36)
-TitleBar.BackgroundColor3 = Colors.Surface
-TitleBar.BorderSizePixel = 0
-TitleBar.ZIndex = 2
-TitleBar.Parent = Main
+local TitleBar = Create("Frame", {
+    Name = "TitleBar",
+    Parent = MainFrame,
+    Size = UDim2.new(1, 0, 0, 42),
+    BackgroundColor3 = Theme.Surface,
+    BackgroundTransparency = 0.2,
+    BorderSizePixel = 0
+})
 
-Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, 8)
+Create("UICorner", {
+    Parent = TitleBar,
+    CornerRadius = UDim.new(0, 16)
+})
 
-local TitleText = Instance.new("TextLabel")
-TitleText.Text = "ARSENAL KIT  v6"
-TitleText.Size = UDim2.new(1, -80, 1, 0)
-TitleText.Position = UDim2.new(0, 14, 0, 0)
-TitleText.BackgroundTransparency = 1
-TitleText.TextColor3 = Colors.Text
-TitleText.Font = Enum.Font.SourceSans
-TitleText.TextSize = 14
-TitleText.TextXAlignment = Enum.TextXAlignment.Left
-TitleText.ZIndex = 3
-TitleText.Parent = TitleBar
+local TitleFix = Create("Frame", {
+    Parent = TitleBar,
+    Size = UDim2.new(1, 0, 0.5, 0),
+    Position = UDim2.new(0, 0, 0.5, 0),
+    BackgroundColor3 = Theme.Surface,
+    BackgroundTransparency = 0.2,
+    BorderSizePixel = 0
+})
 
-local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Size = UDim2.new(0, 120, 0, 36)
-StatusLabel.Position = UDim2.new(1, -160, 0, 0)
-StatusLabel.BackgroundTransparency = 1
-StatusLabel.Text = "Loading..."
-StatusLabel.TextColor3 = Colors.Accent
-StatusLabel.Font = Enum.Font.SourceSans
-StatusLabel.TextSize = 12
-StatusLabel.TextXAlignment = Enum.TextXAlignment.Right
-StatusLabel.ZIndex = 3
-StatusLabel.Parent = TitleBar
+local TitleText = Create("TextLabel", {
+    Parent = TitleBar,
+    Size = UDim2.new(0.55, 0, 1, 0),
+    Position = UDim2.new(0, 18, 0, 0),
+    BackgroundTransparency = 1,
+    Text = "ArsenalKit",
+    TextColor3 = Theme.Text,
+    Font = Enum.Font.SourceSans,
+    TextSize = 20,
+    TextXAlignment = Enum.TextXAlignment.Left
+})
 
-local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.new(0, 26, 0, 26)
-CloseBtn.Position = UDim2.new(1, -32, 0, 5)
-CloseBtn.BackgroundColor3 = Colors.Error
-CloseBtn.Text = "x"
-CloseBtn.TextColor3 = Colors.Text
-CloseBtn.Font = Enum.Font.SourceSans
-CloseBtn.TextSize = 16
-CloseBtn.BorderSizePixel = 0
-CloseBtn.ZIndex = 3
-CloseBtn.Parent = TitleBar
+local VerBadge = Create("TextLabel", {
+    Parent = TitleBar,
+    Size = UDim2.new(0, 40, 0, 20),
+    Position = UDim2.new(0, 130, 0.5, -10),
+    BackgroundColor3 = Theme.Accent,
+    BackgroundTransparency = 0.85,
+    Text = "v3.0",
+    TextColor3 = Theme.Accent,
+    Font = Enum.Font.SourceSans,
+    TextSize = 12,
+    TextXAlignment = Enum.TextXAlignment.Center
+})
+Create("UICorner", {
+    Parent = VerBadge,
+    CornerRadius = UDim.new(0, 10)
+})
 
-Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 6)
+local AccentLine = Create("Frame", {
+    Parent = TitleBar,
+    Size = UDim2.new(1, 0, 0, 2),
+    Position = UDim2.new(0, 0, 1, -1),
+    BackgroundColor3 = Theme.Accent,
+    BackgroundTransparency = 0.35,
+    BorderSizePixel = 0
+})
+
+-- Close button
+local CloseBtn = Create("TextButton", {
+    Parent = TitleBar,
+    Size = UDim2.new(0, 32, 0, 32),
+    Position = UDim2.new(1, -42, 0, 5),
+    BackgroundColor3 = Theme.Negative,
+    BackgroundTransparency = 0.75,
+    Text = "x",
+    TextColor3 = Theme.Text,
+    Font = Enum.Font.SourceSans,
+    TextSize = 18,
+    BorderSizePixel = 0,
+    AutoButtonColor = false
+})
+Create("UICorner", {
+    Parent = CloseBtn,
+    CornerRadius = UDim.new(0, 8)
+})
+
+CloseBtn.MouseEnter:Connect(function()
+    Tween(CloseBtn, TweenInfo.new(0.2), {BackgroundTransparency = 0.35})
+end)
+CloseBtn.MouseLeave:Connect(function()
+    Tween(CloseBtn, TweenInfo.new(0.2), {BackgroundTransparency = 0.75})
+end)
 CloseBtn.MouseButton1Click:Connect(function()
-    ScreenGui:Destroy()
-    _G.ArsenalKit = nil
+    Tween(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+        Size = UDim2.new(0, 0, 0, 0),
+        Position = UDim2.new(0.5, 0, 0.5, 0)
+    }).Completed:Connect(function()
+        ScreenGui:Destroy()
+        getgenv().ArsenalKit = nil
+    end)
 end)
 
 -- Sidebar
-local Sidebar = Instance.new("Frame")
-Sidebar.Size = UDim2.new(0, 130, 1, -36)
-Sidebar.Position = UDim2.new(0, 0, 0, 36)
-Sidebar.BackgroundColor3 = Colors.Surface
-Sidebar.BorderSizePixel = 0
-Sidebar.ZIndex = 2
-Sidebar.Parent = Main
-
-Instance.new("UICorner", Sidebar).CornerRadius = UDim.new(0, 0)
-
-local TabList = Instance.new("UIListLayout")
-TabList.Padding = UDim.new(0, 4)
-TabList.SortOrder = Enum.SortOrder.LayoutOrder
-TabList.Parent = Sidebar
-
-local TabPadding = Instance.new("UIPadding")
-TabPadding.PaddingTop = UDim.new(0, 8)
-TabPadding.PaddingLeft = UDim.new(0, 8)
-TabPadding.PaddingRight = UDim.new(0, 8)
-TabPadding.Parent = Sidebar
-
--- Content
-local Content = Instance.new("Frame")
-Content.Size = UDim2.new(1, -130, 1, -36)
-Content.Position = UDim2.new(0, 130, 0, 36)
-Content.BackgroundTransparency = 1
-Content.BorderSizePixel = 0
-Content.ZIndex = 2
-Content.Parent = Main
-
-local ActiveTab = nil
-local ActiveTabBtn = nil
-
---// Create Tab
-function ArsenalKit:CreateTab(name, icon)
-    if ArsenalKit.Tabs[name] then return ArsenalKit.Tabs[name] end
-
-    local TabBtn = Instance.new("TextButton")
-    TabBtn.Name = name
-    TabBtn.Size = UDim2.new(1, 0, 0, 30)
-    TabBtn.BackgroundColor3 = Colors.Surface
-    TabBtn.Text = "  [" .. (icon or ">") .. "]  " .. name
-    TabBtn.TextColor3 = Colors.TextDim
-    TabBtn.Font = Enum.Font.SourceSans
-    TabBtn.TextSize = 13
-    TabBtn.TextXAlignment = Enum.TextXAlignment.Left
-    TabBtn.BorderSizePixel = 0
-    TabBtn.AutoButtonColor = false
-    TabBtn.ZIndex = 3
-    TabBtn.Parent = Sidebar
-
-    Instance.new("UICorner", TabBtn).CornerRadius = UDim.new(0, 6)
-
-    local TabPage = Instance.new("ScrollingFrame")
-    TabPage.Name = name .. "Page"
-    TabPage.Size = UDim2.new(1, -16, 1, -16)
-    TabPage.Position = UDim2.new(0, 8, 0, 8)
-    TabPage.BackgroundTransparency = 1
-    TabPage.BorderSizePixel = 0
-    TabPage.ScrollBarThickness = 3
-    TabPage.ScrollBarImageColor3 = Colors.Accent
-    TabPage.Visible = false
-    TabPage.ZIndex = 2
-    TabPage.Parent = Content
-
-    local List = Instance.new("UIListLayout")
-    List.Padding = UDim.new(0, 6)
-    List.SortOrder = Enum.SortOrder.LayoutOrder
-    List.Parent = TabPage
-
-    local Pad = Instance.new("UIPadding")
-    Pad.PaddingTop = UDim.new(0, 4)
-    Pad.PaddingBottom = UDim.new(0, 4)
-    Pad.Parent = TabPage
-
-    TabBtn.MouseEnter:Connect(function()
-        if ActiveTab ~= TabPage then
-            ArsenalKit.Tween(TabBtn, {BackgroundColor3 = Colors.SurfaceHover}, 0.15)
-        end
-    end)
-
-    TabBtn.MouseLeave:Connect(function()
-        if ActiveTab ~= TabPage then
-            ArsenalKit.Tween(TabBtn, {BackgroundColor3 = Colors.Surface}, 0.15)
-        end
-    end)
-
-    TabBtn.MouseButton1Click:Connect(function()
-        if ActiveTab then
-            ActiveTab.Visible = false
-            if ActiveTabBtn then
-                ArsenalKit.Tween(ActiveTabBtn, {BackgroundColor3 = Colors.Surface, TextColor3 = Colors.TextDim}, 0.15)
-            end
-        end
-        ActiveTab = TabPage
-        ActiveTabBtn = TabBtn
-        TabPage.Visible = true
-        ArsenalKit.Tween(TabBtn, {BackgroundColor3 = Colors.Accent, TextColor3 = Colors.Text}, 0.15)
-    end)
-
-    ArsenalKit.Tabs[name] = TabPage
-    return TabPage
-end
-
---// Create Section
-function ArsenalKit:CreateSection(parent, text)
-    local Label = Instance.new("TextLabel")
-    Label.Text = text:upper()
-    Label.Size = UDim2.new(1, 0, 0, 18)
-    Label.BackgroundTransparency = 1
-    Label.TextColor3 = Colors.Accent
-    Label.Font = Enum.Font.SourceSans
-    Label.TextSize = 11
-    Label.TextXAlignment = Enum.TextXAlignment.Left
-    Label.Parent = parent
-    return Label
-end
-
---// Create Toggle
-function ArsenalKit:CreateToggle(parent, label, default, callback)
-    local Container = Instance.new("Frame")
-    Container.Size = UDim2.new(1, 0, 0, 34)
-    Container.BackgroundColor3 = Colors.Surface
-    Container.BorderSizePixel = 0
-    Container.Parent = parent
-
-    Instance.new("UICorner", Container).CornerRadius = UDim.new(0, 6)
-
-    local LabelObj = Instance.new("TextLabel")
-    LabelObj.Text = label
-    LabelObj.Size = UDim2.new(1, -60, 1, 0)
-    LabelObj.Position = UDim2.new(0, 12, 0, 0)
-    LabelObj.BackgroundTransparency = 1
-    LabelObj.TextColor3 = Colors.Text
-    LabelObj.Font = Enum.Font.SourceSans
-    LabelObj.TextSize = 13
-    LabelObj.TextXAlignment = Enum.TextXAlignment.Left
-    LabelObj.Parent = Container
-
-    local ToggleBtn = Instance.new("TextButton")
-    ToggleBtn.Size = UDim2.new(0, 40, 0, 20)
-    ToggleBtn.Position = UDim2.new(1, -52, 0.5, -10)
-    ToggleBtn.BackgroundColor3 = default and Colors.ToggleOn or Colors.ToggleOff
-    ToggleBtn.Text = ""
-    ToggleBtn.BorderSizePixel = 0
-    ToggleBtn.AutoButtonColor = false
-    ToggleBtn.Parent = Container
-
-    Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(1, 0)
-
-    local Knob = Instance.new("Frame")
-    Knob.Size = UDim2.new(0, 16, 0, 16)
-    Knob.Position = default and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
-    Knob.BackgroundColor3 = Colors.Text
-    Knob.BorderSizePixel = 0
-    Knob.Parent = ToggleBtn
-
-    Instance.new("UICorner", Knob).CornerRadius = UDim.new(1, 0)
-
-    local State = default
-    ToggleBtn.MouseButton1Click:Connect(function()
-        State = not State
-        ArsenalKit.Tween(ToggleBtn, {BackgroundColor3 = State and Colors.ToggleOn or Colors.ToggleOff}, 0.2)
-        ArsenalKit.Tween(Knob, {Position = State and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)}, 0.2)
-        if callback then callback(State) end
-    end)
-
-    return Container, function() return State end
-end
-
---// Create Slider
-function ArsenalKit:CreateSlider(parent, label, min, max, default, callback)
-    local Container = Instance.new("Frame")
-    Container.Size = UDim2.new(1, 0, 0, 48)
-    Container.BackgroundColor3 = Colors.Surface
-    Container.BorderSizePixel = 0
-    Container.Parent = parent
-
-    Instance.new("UICorner", Container).CornerRadius = UDim.new(0, 6)
-
-    local LabelObj = Instance.new("TextLabel")
-    LabelObj.Text = label
-    LabelObj.Size = UDim2.new(1, -60, 0, 18)
-    LabelObj.Position = UDim2.new(0, 12, 0, 4)
-    LabelObj.BackgroundTransparency = 1
-    LabelObj.TextColor3 = Colors.Text
-    LabelObj.Font = Enum.Font.SourceSans
-    LabelObj.TextSize = 13
-    LabelObj.TextXAlignment = Enum.TextXAlignment.Left
-    LabelObj.Parent = Container
-
-    local ValueLabel = Instance.new("TextLabel")
-    ValueLabel.Text = tostring(default)
-    ValueLabel.Size = UDim2.new(0, 40, 0, 18)
-    ValueLabel.Position = UDim2.new(1, -52, 0, 4)
-    ValueLabel.BackgroundTransparency = 1
-    ValueLabel.TextColor3 = Colors.Accent
-    ValueLabel.Font = Enum.Font.SourceSans
-    ValueLabel.TextSize = 13
-    ValueLabel.TextXAlignment = Enum.TextXAlignment.Right
-    ValueLabel.Parent = Container
-
-    local Track = Instance.new("Frame")
-    Track.Size = UDim2.new(1, -24, 0, 4)
-    Track.Position = UDim2.new(0, 12, 0, 30)
-    Track.BackgroundColor3 = Colors.ToggleOff
-    Track.BorderSizePixel = 0
-    Track.Parent = Container
-
-    Instance.new("UICorner", Track).CornerRadius = UDim.new(1, 0)
-
-    local Fill = Instance.new("Frame")
-    Fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
-    Fill.BackgroundColor3 = Colors.Accent
-    Fill.BorderSizePixel = 0
-    Fill.Parent = Track
-
-    Instance.new("UICorner", Fill).CornerRadius = UDim.new(1, 0)
-
-    local Knob = Instance.new("Frame")
-    Knob.Size = UDim2.new(0, 10, 0, 10)
-    Knob.Position = UDim2.new((default - min) / (max - min), -5, 0.5, -5)
-    Knob.BackgroundColor3 = Colors.Text
-    Knob.BorderSizePixel = 0
-    Knob.Parent = Track
-
-    Instance.new("UICorner", Knob).CornerRadius = UDim.new(1, 0)
-
-    local Dragging = false
-    local function Update(input)
-        local pos = math.clamp((input.Position.X - Track.AbsolutePosition.X) / Track.AbsoluteSize.X, 0, 1)
-        local val = math.floor(min + (pos * (max - min)))
-        ValueLabel.Text = tostring(val)
-        Fill.Size = UDim2.new(pos, 0, 1, 0)
-        Knob.Position = UDim2.new(pos, -5, 0.5, -5)
-        if callback then callback(val) end
-    end
-
-    Knob.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then Dragging = true end
-    end)
-    Track.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then Dragging = true Update(input) end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if Dragging and input.UserInputType == Enum.UserInputType.MouseMovement then Update(input) end
-    end)
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then Dragging = false end
-    end)
-
-    return Container
-end
-
---// Create Button
-function ArsenalKit:CreateButton(parent, label, callback)
-    local Btn = Instance.new("TextButton")
-    Btn.Size = UDim2.new(1, 0, 0, 32)
-    Btn.BackgroundColor3 = Colors.Accent
-    Btn.Text = label
-    Btn.TextColor3 = Colors.Text
-    Btn.Font = Enum.Font.SourceSans
-    Btn.TextSize = 13
-    Btn.BorderSizePixel = 0
-    Btn.AutoButtonColor = false
-    Btn.Parent = parent
-
-    Instance.new("UICorner", Btn).CornerRadius = UDim.new(0, 6)
-
-    Btn.MouseEnter:Connect(function()
-        ArsenalKit.Tween(Btn, {BackgroundColor3 = Colors.AccentDark}, 0.15)
-    end)
-    Btn.MouseLeave:Connect(function()
-        ArsenalKit.Tween(Btn, {BackgroundColor3 = Colors.Accent}, 0.15)
-    end)
-    Btn.MouseButton1Click:Connect(function()
-        if callback then callback() end
-    end)
-    return Btn
-end
-
---// Create Dropdown (NO CLIP)
-function ArsenalKit:CreateDropdown(parent, label, options, default, callback)
-    local Container = Instance.new("Frame")
-    Container.Size = UDim2.new(1, 0, 0, 34)
-    Container.BackgroundColor3 = Colors.Surface
-    Container.BorderSizePixel = 0
-    Container.Parent = parent
-
-    Instance.new("UICorner", Container).CornerRadius = UDim.new(0, 6)
-
-    local LabelObj = Instance.new("TextLabel")
-    LabelObj.Text = label
-    LabelObj.Size = UDim2.new(1, -120, 1, 0)
-    LabelObj.Position = UDim2.new(0, 12, 0, 0)
-    LabelObj.BackgroundTransparency = 1
-    LabelObj.TextColor3 = Colors.Text
-    LabelObj.Font = Enum.Font.SourceSans
-    LabelObj.TextSize = 13
-    LabelObj.TextXAlignment = Enum.TextXAlignment.Left
-    LabelObj.Parent = Container
-
-    local Selected = Instance.new("TextButton")
-    Selected.Size = UDim2.new(0, 100, 0, 24)
-    Selected.Position = UDim2.new(1, -112, 0.5, -12)
-    Selected.BackgroundColor3 = Colors.BG
-    Selected.Text = default or options[1] or "Select"
-    Selected.TextColor3 = Colors.Text
-    Selected.Font = Enum.Font.SourceSans
-    Selected.TextSize = 12
-    Selected.BorderSizePixel = 0
-    Selected.AutoButtonColor = false
-    Selected.Parent = Container
-
-    Instance.new("UICorner", Selected).CornerRadius = UDim.new(0, 4)
-
-    local DropdownOverlay = Instance.new("Frame")
-    DropdownOverlay.Name = "DropdownOverlay_" .. label
-    DropdownOverlay.Size = UDim2.new(0, 100, 0, 0)
-    DropdownOverlay.BackgroundColor3 = Colors.Surface
-    DropdownOverlay.BorderSizePixel = 0
-    DropdownOverlay.Visible = false
-    DropdownOverlay.ZIndex = 100
-    DropdownOverlay.Parent = ScreenGui
-
-    Instance.new("UICorner", DropdownOverlay).CornerRadius = UDim.new(0, 6)
-
-    local Opened = false
-
-    local function CloseDropdown()
-        Opened = false
-        DropdownOverlay.Visible = false
-        for _, c in ipairs(DropdownOverlay:GetChildren()) do
-            if c:IsA("TextButton") then c:Destroy() end
-        end
-    end
-
-    local function OpenDropdown()
-        if Opened then CloseDropdown() return end
-        Opened = true
-        for _, c in ipairs(DropdownOverlay:GetChildren()) do
-            if c:IsA("TextButton") then c:Destroy() end
-        end
-        local absPos = Selected.AbsolutePosition
-        local absSize = Selected.AbsoluteSize
-        DropdownOverlay.Position = UDim2.new(0, absPos.X, 0, absPos.Y + absSize.Y + 2)
-        DropdownOverlay.Size = UDim2.new(0, absSize.X, 0, #options * 26)
-        DropdownOverlay.Visible = true
-
-        for i, opt in ipairs(options) do
-            local OptBtn = Instance.new("TextButton")
-            OptBtn.Size = UDim2.new(1, 0, 0, 26)
-            OptBtn.Position = UDim2.new(0, 0, 0, (i-1)*26)
-            OptBtn.BackgroundColor3 = Colors.BG
-            OptBtn.Text = opt
-            OptBtn.TextColor3 = Colors.TextDim
-            OptBtn.Font = Enum.Font.SourceSans
-            OptBtn.TextSize = 12
-            OptBtn.BorderSizePixel = 0
-            OptBtn.AutoButtonColor = false
-            OptBtn.ZIndex = 101
-            OptBtn.Parent = DropdownOverlay
-
-            OptBtn.MouseEnter:Connect(function()
-                ArsenalKit.Tween(OptBtn, {BackgroundColor3 = Colors.SurfaceHover, TextColor3 = Colors.Text}, 0.1)
-            end)
-            OptBtn.MouseLeave:Connect(function()
-                ArsenalKit.Tween(OptBtn, {BackgroundColor3 = Colors.BG, TextColor3 = Colors.TextDim}, 0.1)
-            end)
-            OptBtn.MouseButton1Click:Connect(function()
-                Selected.Text = opt
-                CloseDropdown()
-                if callback then callback(opt) end
-            end)
-        end
-    end
-
-    Selected.MouseButton1Click:Connect(OpenDropdown)
-
-    UserInputService.InputBegan:Connect(function(input, gp)
-        if gp then return end
-        if not Opened then return end
-        if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
-        local mp = input.Position
-        local dp = DropdownOverlay.AbsolutePosition
-        local ds = DropdownOverlay.AbsoluteSize
-        local sp = Selected.AbsolutePosition
-        local ss = Selected.AbsoluteSize
-        local inDrop = mp.X >= dp.X and mp.X <= dp.X + ds.X and mp.Y >= dp.Y and mp.Y <= dp.Y + ds.Y
-        local inSel = mp.X >= sp.X and mp.X <= sp.X + ss.X and mp.Y >= sp.Y and mp.Y <= sp.Y + ss.Y
-        if not inDrop and not inSel then CloseDropdown() end
-    end)
-
-    return Container
-end
-
---// Create Keybind (Keyboard + Mouse)
-function ArsenalKit:CreateKeybind(parent, label, defaultKey, callback)
-    local Container = Instance.new("Frame")
-    Container.Size = UDim2.new(1, 0, 0, 34)
-    Container.BackgroundColor3 = Colors.Surface
-    Container.BorderSizePixel = 0
-    Container.Parent = parent
-
-    Instance.new("UICorner", Container).CornerRadius = UDim.new(0, 6)
-
-    local LabelObj = Instance.new("TextLabel")
-    LabelObj.Text = label
-    LabelObj.Size = UDim2.new(1, -80, 1, 0)
-    LabelObj.Position = UDim2.new(0, 12, 0, 0)
-    LabelObj.BackgroundTransparency = 1
-    LabelObj.TextColor3 = Colors.Text
-    LabelObj.Font = Enum.Font.SourceSans
-    LabelObj.TextSize = 13
-    LabelObj.TextXAlignment = Enum.TextXAlignment.Left
-    LabelObj.Parent = Container
-
-    local KeyBtn = Instance.new("TextButton")
-    KeyBtn.Size = UDim2.new(0, 60, 0, 24)
-    KeyBtn.Position = UDim2.new(1, -72, 0.5, -12)
-    KeyBtn.BackgroundColor3 = Colors.Accent
-    KeyBtn.TextColor3 = Colors.Text
-    KeyBtn.Font = Enum.Font.SourceSans
-    KeyBtn.TextSize = 12
-    KeyBtn.BorderSizePixel = 0
-    KeyBtn.AutoButtonColor = false
-    KeyBtn.Parent = Container
-
-    Instance.new("UICorner", KeyBtn).CornerRadius = UDim.new(0, 4)
-
-    local CurrentKey = nil
-    local CurrentMouse = nil
-    local Listening = false
-
-    local function GetBindName()
-        if CurrentKey and CurrentKey ~= Enum.KeyCode.Unknown then return CurrentKey.Name end
-        if CurrentMouse then
-            if CurrentMouse == Enum.UserInputType.MouseButton1 then return "LMB" end
-            if CurrentMouse == Enum.UserInputType.MouseButton2 then return "RMB" end
-            if CurrentMouse == Enum.UserInputType.MouseButton3 then return "MMB" end
-            if CurrentMouse == Enum.UserInputType.MouseButton4 then return "MB4" end
-            if CurrentMouse == Enum.UserInputType.MouseButton5 then return "MB5" end
-        end
-        return "NONE"
-    end
-
-    local function MatchesBind(input)
-        if CurrentKey and input.KeyCode == CurrentKey then return true end
-        if CurrentMouse and input.UserInputType == CurrentMouse then return true end
-        return false
-    end
-
-    if typeof(defaultKey) == "EnumItem" then
-        if defaultKey.EnumType == Enum.KeyCode then CurrentKey = defaultKey
-        elseif defaultKey.EnumType == Enum.UserInputType then CurrentMouse = defaultKey end
-    end
-    KeyBtn.Text = GetBindName()
-
-    KeyBtn.MouseButton1Click:Connect(function()
-        if Listening then
-            Listening = false
-            KeyBtn.Text = GetBindName()
-            KeyBtn.BackgroundColor3 = Colors.Accent
-            return
-        end
-        Listening = true
-        KeyBtn.Text = "..."
-        KeyBtn.BackgroundColor3 = Colors.ToggleOn
-    end)
-
-    UserInputService.InputBegan:Connect(function(input, gp)
-        if gp then return end
-        if Listening then
-            if input.KeyCode ~= Enum.KeyCode.Unknown then
-                CurrentKey = input.KeyCode
-                CurrentMouse = nil
-            elseif input.UserInputType == Enum.UserInputType.MouseButton1
-                or input.UserInputType == Enum.UserInputType.MouseButton2
-                or input.UserInputType == Enum.UserInputType.MouseButton3
-                or input.UserInputType == Enum.UserInputType.MouseButton4
-                or input.UserInputType == Enum.UserInputType.MouseButton5 then
-                CurrentMouse = input.UserInputType
-                CurrentKey = nil
-            else
-                return
-            end
-            KeyBtn.Text = GetBindName()
-            KeyBtn.BackgroundColor3 = Colors.Accent
-            Listening = false
-            if callback then callback(CurrentKey or CurrentMouse) end
-            return
-        end
-        if MatchesBind(input) then
-            if callback then callback(CurrentKey or CurrentMouse, true) end
-        end
-    end)
-
-    return Container
-end
-
---// Dragging
-local Dragging = false
-local DragStart, StartPos
-
+local Sidebar = Create("Frame", {
+    Name = "Sidebar",
+    Parent = MainFrame,
+    Size = UDim2.new(0, 150, 1, -42),
+    Position = UDim2.new(0, 0, 0, 42),
+    BackgroundColor3 = Theme.Surface,
+    BackgroundTransparency = 0.35,
+    BorderSizePixel = 0
+})
+
+Create("UICorner", {
+    Parent = Sidebar,
+    CornerRadius = UDim.new(0, 0, 0, 16)
+})
+
+-- Content area
+local Content = Create("Frame", {
+    Name = "Content",
+    Parent = MainFrame,
+    Size = UDim2.new(1, -150, 1, -42),
+    Position = UDim2.new(0, 150, 0, 42),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ClipsDescendants = true
+})
+
+-- Tab indicator
+local TabGlow = Create("Frame", {
+    Parent = Sidebar,
+    Size = UDim2.new(0, 4, 0, 32),
+    Position = UDim2.new(0, 8, 0, 12),
+    BackgroundColor3 = Theme.Accent,
+    BorderSizePixel = 0
+})
+Create("UICorner", {
+    Parent = TabGlow,
+    CornerRadius = UDim.new(0, 2)
+})
+Create("UIStroke", {
+    Parent = TabGlow,
+    Color = Theme.Accent,
+    Thickness = 2,
+    Transparency = 0.4
+})
+
+-- Draggable
+local dragging, dragStart, startPos
 TitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        Dragging = true
-        DragStart = input.Position
-        StartPos = Main.Position
+        dragging = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
     end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
-    if Dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-        local delta = input.Position - DragStart
-        Main.Position = UDim2.new(StartPos.X.Scale, StartPos.X.Offset + delta.X, StartPos.Y.Scale, StartPos.Y.Offset + delta.Y)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        MainFrame.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
     end
 end)
 
 UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then Dragging = false end
-end)
-
---// Toggle UI
-UserInputService.InputBegan:Connect(function(input, gp)
-    if not gp and input.KeyCode == Enum.KeyCode.RightShift then
-        Main.Visible = not Main.Visible
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
     end
 end)
 
---// ==========================
---// LOAD MODULES
---// ==========================
+-- Open animation
+MainFrame.Size = UDim2.new(0, 0, 0, 0)
+MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+Tween(MainFrame, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+    Size = UDim2.new(0, 620, 0, 440),
+    Position = UDim2.new(0.5, -310, 0.5, -220)
+})
 
-local ModuleList = {"aimbot", "esp", "weapon", "world", "movement", "misc"}
-local LoadResults = {}
+-- Toggle UI
+local UIVisible = true
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.RightShift then
+        UIVisible = not UIVisible
+        if UIVisible then
+            MainFrame.Visible = true
+            Tween(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Size = UDim2.new(0, 620, 0, 440)
+            })
+        else
+            Tween(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                Size = UDim2.new(0, 0, 0, 0)
+            }).Completed:Connect(function()
+                MainFrame.Visible = false
+            end)
+        end
+    end
+end)
 
-for _, modName in ipairs(ModuleList) do
-    task.spawn(function()
-        LoadResults[modName] = LoadModule(modName)
+-- Create Tab
+function ArsenalKit:CreateTab(name)
+    local tabIndex = #ArsenalKit.Tabs
+
+    local tabBtn = Create("Frame", {
+        Parent = Sidebar,
+        Size = UDim2.new(1, -20, 0, 36),
+        Position = UDim2.new(0, 10, 0, 12 + (tabIndex * 44)),
+        BackgroundColor3 = Theme.Surface,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0
+    })
+    Create("UICorner", {
+        Parent = tabBtn,
+        CornerRadius = UDim.new(0, 10)
+    })
+
+    local tabText = Create("TextLabel", {
+        Parent = tabBtn,
+        Size = UDim2.new(1, -16, 1, 0),
+        Position = UDim2.new(0, 14, 0, 0),
+        BackgroundTransparency = 1,
+        Text = name,
+        TextColor3 = Theme.TextDim,
+        Font = Enum.Font.SourceSans,
+        TextSize = 15,
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+
+    local clickZone = Create("TextButton", {
+        Parent = tabBtn,
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Text = "",
+        BorderSizePixel = 0
+    })
+
+    local tabContent = Create("ScrollingFrame", {
+        Parent = Content,
+        Size = UDim2.new(1, -14, 1, -14),
+        Position = UDim2.new(0, 7, 0, 7),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ScrollBarThickness = 3,
+        ScrollBarImageColor3 = Theme.Accent,
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        Visible = false
+    })
+
+    local layout = Create("UIListLayout", {
+        Parent = tabContent,
+        Padding = UDim.new(0, 8),
+        SortOrder = Enum.SortOrder.LayoutOrder
+    })
+
+    Create("UIPadding", {
+        Parent = tabContent,
+        PaddingLeft = UDim.new(0, 6),
+        PaddingRight = UDim.new(0, 6),
+        PaddingTop = UDim.new(0, 6),
+        PaddingBottom = UDim.new(0, 6)
+    })
+
+    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        tabContent.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 12)
     end)
+
+    local tab = {
+        Name = name,
+        Button = tabBtn,
+        TextLabel = tabText,
+        Content = tabContent,
+        Layout = layout,
+        Index = tabIndex
+    }
+    table.insert(ArsenalKit.Tabs, tab)
+
+    clickZone.MouseButton1Click:Connect(function()
+        ArsenalKit:SwitchTab(tab)
+    end)
+
+    clickZone.MouseEnter:Connect(function()
+        if ArsenalKit.ActiveTab ~= tab then
+            Tween(tabBtn, TweenInfo.new(0.2), {BackgroundTransparency = 0.5})
+            Tween(tabText, TweenInfo.new(0.2), {TextColor3 = Theme.Text})
+        end
+    end)
+
+    clickZone.MouseLeave:Connect(function()
+        if ArsenalKit.ActiveTab ~= tab then
+            Tween(tabBtn, TweenInfo.new(0.2), {BackgroundTransparency = 1})
+            Tween(tabText, TweenInfo.new(0.2), {TextColor3 = Theme.TextDim})
+        end
+    end)
+
+    if #ArsenalKit.Tabs == 1 then
+        ArsenalKit:SwitchTab(tab)
+    end
+
+    return tabContent
 end
 
-task.delay(2, function()
-    local successCount = 0
-    for _, v in pairs(LoadResults) do if v then successCount = successCount + 1 end end
-    StatusLabel.Text = successCount .. "/" .. #ModuleList .. " loaded"
-    StatusLabel.TextColor3 = successCount == #ModuleList and Colors.ToggleOn or Colors.Error
-
-    local firstTab = nil
-    for _, page in pairs(Content:GetChildren()) do
-        if page:IsA("ScrollingFrame") then firstTab = page break end
+-- Switch Tab
+function ArsenalKit:SwitchTab(targetTab)
+    for _, tab in pairs(ArsenalKit.Tabs) do
+        tab.Content.Visible = false
+        Tween(tab.Button, TweenInfo.new(0.2), {BackgroundTransparency = 1})
+        Tween(tab.TextLabel, TweenInfo.new(0.2), {TextColor3 = Theme.TextDim})
     end
-    if firstTab then
-        for _, btn in pairs(Sidebar:GetChildren()) do
-            if btn:IsA("TextButton") then
-                btn.TextColor3 = Colors.TextDim
-                btn.BackgroundColor3 = Colors.Surface
+
+    ArsenalKit.ActiveTab = targetTab
+    targetTab.Content.Visible = true
+    Tween(targetTab.Button, TweenInfo.new(0.25), {BackgroundTransparency = 0.4})
+    Tween(targetTab.TextLabel, TweenInfo.new(0.25), {TextColor3 = Theme.Text})
+
+    local btnPos = targetTab.Button.Position
+    Tween(TabGlow, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Position = UDim2.new(0, 8, 0, btnPos.Y.Offset + 2),
+        Size = UDim2.new(0, 4, 0, 32)
+    })
+end
+
+-- Create Section
+function ArsenalKit:CreateSection(parent, text)
+    local section = Create("Frame", {
+        Parent = parent,
+        Size = UDim2.new(1, 0, 0, 28),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        LayoutOrder = #parent:GetChildren()
+    })
+
+    Create("TextLabel", {
+        Parent = section,
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Text = text,
+        TextColor3 = Theme.Accent,
+        Font = Enum.Font.SourceSans,
+        TextSize = 15,
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+
+    Create("Frame", {
+        Parent = section,
+        Size = UDim2.new(1, 0, 0, 1),
+        Position = UDim2.new(0, 0, 1, -2),
+        BackgroundColor3 = Theme.Accent,
+        BackgroundTransparency = 0.6,
+        BorderSizePixel = 0
+    })
+
+    return section
+end
+
+-- Create Toggle
+function ArsenalKit:CreateToggle(parent, text, default, callback)
+    local toggle = Create("Frame", {
+        Parent = parent,
+        Size = UDim2.new(1, 0, 0, 38),
+        BackgroundColor3 = Theme.Surface,
+        BackgroundTransparency = 0.55,
+        BorderSizePixel = 0,
+        LayoutOrder = #parent:GetChildren()
+    })
+    Create("UICorner", {
+        Parent = toggle,
+        CornerRadius = UDim.new(0, 10)
+    })
+
+    Create("TextLabel", {
+        Parent = toggle,
+        Size = UDim2.new(0.6, 0, 1, 0),
+        Position = UDim2.new(0, 14, 0, 0),
+        BackgroundTransparency = 1,
+        Text = text,
+        TextColor3 = Theme.Text,
+        Font = Enum.Font.SourceSans,
+        TextSize = 15,
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+
+    local btn = Create("TextButton", {
+        Parent = toggle,
+        Size = UDim2.new(0, 50, 0, 26),
+        Position = UDim2.new(1, -62, 0.5, -13),
+        BackgroundColor3 = default and Theme.Positive or Theme.Negative,
+        Text = "",
+        BorderSizePixel = 0,
+        AutoButtonColor = false
+    })
+    Create("UICorner", {
+        Parent = btn,
+        CornerRadius = UDim.new(0, 13)
+    })
+
+    local knob = Create("Frame", {
+        Parent = btn,
+        Size = UDim2.new(0, 22, 0, 22),
+        Position = default and UDim2.new(1, -24, 0.5, -11) or UDim2.new(0, 2, 0.5, -11),
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BorderSizePixel = 0
+    })
+    Create("UICorner", {
+        Parent = knob,
+        CornerRadius = UDim.new(0, 11)
+    })
+
+    local state = default
+
+    local function update()
+        state = not state
+        local targetColor = state and Theme.Positive or Theme.Negative
+        local targetPos = state and UDim2.new(1, -24, 0.5, -11) or UDim2.new(0, 2, 0.5, -11)
+
+        Tween(btn, TweenInfo.new(0.25), {BackgroundColor3 = targetColor})
+        Tween(knob, TweenInfo.new(0.25), {Position = targetPos})
+
+        if callback then
+            callback(state)
+        end
+    end
+
+    btn.MouseButton1Click:Connect(update)
+
+    return {
+        Frame = toggle,
+        GetState = function() return state end,
+        SetState = function(newState)
+            if state ~= newState then update() end
+        end
+    }
+end
+
+-- Create Slider
+function ArsenalKit:CreateSlider(parent, text, min, max, default, callback)
+    local slider = Create("Frame", {
+        Parent = parent,
+        Size = UDim2.new(1, 0, 0, 56),
+        BackgroundColor3 = Theme.Surface,
+        BackgroundTransparency = 0.55,
+        BorderSizePixel = 0,
+        LayoutOrder = #parent:GetChildren()
+    })
+    Create("UICorner", {
+        Parent = slider,
+        CornerRadius = UDim.new(0, 10)
+    })
+
+    Create("TextLabel", {
+        Parent = slider,
+        Size = UDim2.new(0.55, 0, 0, 24),
+        Position = UDim2.new(0, 14, 0, 6),
+        BackgroundTransparency = 1,
+        Text = text,
+        TextColor3 = Theme.Text,
+        Font = Enum.Font.SourceSans,
+        TextSize = 15,
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+
+    local valueLabel = Create("TextLabel", {
+        Parent = slider,
+        Size = UDim2.new(0.35, 0, 0, 24),
+        Position = UDim2.new(0.6, 0, 0, 6),
+        BackgroundTransparency = 1,
+        Text = tostring(default),
+        TextColor3 = Theme.Accent,
+        Font = Enum.Font.SourceSans,
+        TextSize = 15,
+        TextXAlignment = Enum.TextXAlignment.Right
+    })
+
+    local track = Create("Frame", {
+        Parent = slider,
+        Size = UDim2.new(1, -28, 0, 5),
+        Position = UDim2.new(0, 14, 0, 36),
+        BackgroundColor3 = Theme.Track,
+        BorderSizePixel = 0
+    })
+    Create("UICorner", {
+        Parent = track,
+        CornerRadius = UDim.new(0, 3)
+    })
+
+    local fill = Create("Frame", {
+        Parent = track,
+        Size = UDim2.new((default - min) / (max - min), 0, 1, 0),
+        BackgroundColor3 = Theme.Accent,
+        BorderSizePixel = 0
+    })
+    Create("UICorner", {
+        Parent = fill,
+        CornerRadius = UDim.new(0, 3)
+    })
+
+    local knob = Create("Frame", {
+        Parent = track,
+        Size = UDim2.new(0, 16, 0, 16),
+        Position = UDim2.new((default - min) / (max - min), -8, 0.5, -8),
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BorderSizePixel = 0
+    })
+    Create("UICorner", {
+        Parent = knob,
+        CornerRadius = UDim.new(0, 8)
+    })
+
+    local dragging = false
+
+    local function setValue(input)
+        local pos = math.clamp((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+        local val = math.floor(min + (max - min) * pos)
+
+        fill.Size = UDim2.new(pos, 0, 1, 0)
+        knob.Position = UDim2.new(pos, -8, 0.5, -8)
+        valueLabel.Text = tostring(val)
+
+        if callback then
+            callback(val)
+        end
+    end
+
+    knob.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+        end
+    end)
+
+    track.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            setValue(input)
+            dragging = true
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            setValue(input)
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+
+    return slider
+end
+
+-- Create Dropdown
+function ArsenalKit:CreateDropdown(parent, text, options, default, callback)
+    local dropdown = Create("Frame", {
+        Parent = parent,
+        Size = UDim2.new(1, 0, 0, 38),
+        BackgroundColor3 = Theme.Surface,
+        BackgroundTransparency = 0.55,
+        BorderSizePixel = 0,
+        LayoutOrder = #parent:GetChildren(),
+        ClipsDescendants = false
+    })
+    Create("UICorner", {
+        Parent = dropdown,
+        CornerRadius = UDim.new(0, 10)
+    })
+
+    Create("TextLabel", {
+        Parent = dropdown,
+        Size = UDim2.new(0.5, 0, 1, 0),
+        Position = UDim2.new(0, 14, 0, 0),
+        BackgroundTransparency = 1,
+        Text = text,
+        TextColor3 = Theme.Text,
+        Font = Enum.Font.SourceSans,
+        TextSize = 15,
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+
+    local btn = Create("TextButton", {
+        Parent = dropdown,
+        Size = UDim2.new(0, 140, 0, 28),
+        Position = UDim2.new(1, -154, 0.5, -14),
+        BackgroundColor3 = Theme.Background,
+        Text = default or options[1],
+        TextColor3 = Theme.Text,
+        Font = Enum.Font.SourceSans,
+        TextSize = 14,
+        BorderSizePixel = 0,
+        AutoButtonColor = false
+    })
+    Create("UICorner", {
+        Parent = btn,
+        CornerRadius = UDim.new(0, 6)
+    })
+
+    Create("TextLabel", {
+        Parent = btn,
+        Size = UDim2.new(0, 20, 1, 0),
+        Position = UDim2.new(1, -20, 0, 0),
+        BackgroundTransparency = 1,
+        Text = "v",
+        TextColor3 = Theme.TextDim,
+        Font = Enum.Font.SourceSans,
+        TextSize = 12
+    })
+
+    local optionsFrame = Create("Frame", {
+        Parent = ScreenGui,
+        Size = UDim2.new(0, 140, 0, math.min(#options * 28, 168)),
+        Position = UDim2.new(0, 0, 0, 0),
+        BackgroundColor3 = Theme.Surface,
+        BackgroundTransparency = 0.02,
+        BorderSizePixel = 0,
+        Visible = false,
+        ZIndex = 100
+    })
+    Create("UICorner", {
+        Parent = optionsFrame,
+        CornerRadius = UDim.new(0, 8)
+    })
+    Create("UIStroke", {
+        Parent = optionsFrame,
+        Color = Theme.Border,
+        Thickness = 1,
+        Transparency = 0.4
+    })
+
+    local optsScroll = Create("ScrollingFrame", {
+        Parent = optionsFrame,
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ScrollBarThickness = 2,
+        ScrollBarImageColor3 = Theme.Accent,
+        CanvasSize = UDim2.new(0, 0, 0, #options * 28)
+    })
+
+    for i, opt in ipairs(options) do
+        local optBtn = Create("TextButton", {
+            Parent = optsScroll,
+            Size = UDim2.new(1, 0, 0, 28),
+            Position = UDim2.new(0, 0, 0, (i - 1) * 28),
+            BackgroundColor3 = Theme.Surface,
+            BackgroundTransparency = 1,
+            Text = opt,
+            TextColor3 = Theme.Text,
+            Font = Enum.Font.SourceSans,
+            TextSize = 14,
+            BorderSizePixel = 0,
+            AutoButtonColor = false,
+            ZIndex = 100
+        })
+
+        optBtn.MouseEnter:Connect(function()
+            Tween(optBtn, TweenInfo.new(0.15), {BackgroundTransparency = 0.4})
+        end)
+        optBtn.MouseLeave:Connect(function()
+            Tween(optBtn, TweenInfo.new(0.15), {BackgroundTransparency = 1})
+        end)
+        optBtn.MouseButton1Click:Connect(function()
+            btn.Text = opt
+            optionsFrame.Visible = false
+            if callback then
+                callback(opt)
+            end
+        end)
+    end
+
+    btn.MouseButton1Click:Connect(function()
+        optionsFrame.Visible = not optionsFrame.Visible
+        local absPos = btn.AbsolutePosition
+        optionsFrame.Position = UDim2.new(0, absPos.X, 0, absPos.Y + 30)
+    end)
+
+    UserInputService.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 and optionsFrame.Visible then
+            local mousePos = UserInputService:GetMouseLocation()
+            local dropPos = dropdown.AbsolutePosition
+            local dropSize = dropdown.AbsoluteSize
+            local optPos = optionsFrame.AbsolutePosition
+            local optSize = optionsFrame.AbsoluteSize
+
+            local inDropdown = mousePos.X >= dropPos.X and mousePos.X <= dropPos.X + dropSize.X and
+                              mousePos.Y >= dropPos.Y and mousePos.Y <= dropPos.Y + dropSize.Y
+            local inOptions = mousePos.X >= optPos.X and mousePos.X <= optPos.X + optSize.X and
+                             mousePos.Y >= optPos.Y and mousePos.Y <= optPos.Y + optSize.Y
+
+            if not inDropdown and not inOptions then
+                optionsFrame.Visible = false
             end
         end
-        ActiveTab = firstTab
-        firstTab.Visible = true
-        for _, btn in pairs(Sidebar:GetChildren()) do
-            if btn:IsA("TextButton") and btn.Name .. "Page" == firstTab.Name then
-                ActiveTabBtn = btn
-                ArsenalKit.Tween(btn, {BackgroundColor3 = Colors.Accent, TextColor3 = Colors.Text}, 0.15)
+    end)
+
+    return dropdown
+end
+
+-- Create Keybind
+function ArsenalKit:CreateKeybind(parent, text, defaultKey, callback)
+    local keybind = Create("Frame", {
+        Parent = parent,
+        Size = UDim2.new(1, 0, 0, 38),
+        BackgroundColor3 = Theme.Surface,
+        BackgroundTransparency = 0.55,
+        BorderSizePixel = 0,
+        LayoutOrder = #parent:GetChildren()
+    })
+    Create("UICorner", {
+        Parent = keybind,
+        CornerRadius = UDim.new(0, 10)
+    })
+
+    Create("TextLabel", {
+        Parent = keybind,
+        Size = UDim2.new(0.6, 0, 1, 0),
+        Position = UDim2.new(0, 14, 0, 0),
+        BackgroundTransparency = 1,
+        Text = text,
+        TextColor3 = Theme.Text,
+        Font = Enum.Font.SourceSans,
+        TextSize = 15,
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+
+    local keyText = defaultKey or "None"
+    if typeof(keyText) == "EnumItem" then
+        keyText = keyText.Name
+    end
+
+    local btn = Create("TextButton", {
+        Parent = keybind,
+        Size = UDim2.new(0, 100, 0, 28),
+        Position = UDim2.new(1, -114, 0.5, -14),
+        BackgroundColor3 = Theme.Background,
+        Text = keyText,
+        TextColor3 = Theme.Accent,
+        Font = Enum.Font.SourceSans,
+        TextSize = 14,
+        BorderSizePixel = 0,
+        AutoButtonColor = false
+    })
+    Create("UICorner", {
+        Parent = btn,
+        CornerRadius = UDim.new(0, 6)
+    })
+
+    local currentKey = defaultKey
+
+    local bindEntry = {
+        Key = currentKey,
+        Callback = callback,
+        Button = btn
+    }
+    table.insert(ArsenalKit.Keybinds, bindEntry)
+
+    btn.MouseButton1Click:Connect(function()
+        btn.Text = "..."
+        ArsenalKit.BindMode = true
+        ArsenalKit.BindCallback = function(input)
+            if input.UserInputType == Enum.UserInputType.Keyboard then
+                currentKey = input.KeyCode
+                btn.Text = input.KeyCode.Name
+            elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
+                currentKey = input.UserInputType
+                btn.Text = "LMB"
+            elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
+                currentKey = input.UserInputType
+                btn.Text = "RMB"
+            elseif input.UserInputType == Enum.UserInputType.MouseButton3 then
+                currentKey = input.UserInputType
+                btn.Text = "MMB"
+            elseif input.UserInputType == Enum.UserInputType.MouseWheel then
+                currentKey = input.UserInputType
+                btn.Text = "Wheel"
             end
+            bindEntry.Key = currentKey
+            ArsenalKit.BindMode = false
+            ArsenalKit.BindCallback = nil
+        end
+    end)
+
+    return keybind
+end
+
+-- Create Button
+function ArsenalKit:CreateButton(parent, text, callback)
+    local btnFrame = Create("Frame", {
+        Parent = parent,
+        Size = UDim2.new(1, 0, 0, 38),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        LayoutOrder = #parent:GetChildren()
+    })
+
+    local btn = Create("TextButton", {
+        Parent = btnFrame,
+        Size = UDim2.new(1, -12, 0, 32),
+        Position = UDim2.new(0, 6, 0, 3),
+        BackgroundColor3 = Theme.Accent,
+        BackgroundTransparency = 0.25,
+        Text = text,
+        TextColor3 = Theme.Text,
+        Font = Enum.Font.SourceSans,
+        TextSize = 15,
+        BorderSizePixel = 0,
+        AutoButtonColor = false
+    })
+    Create("UICorner", {
+        Parent = btn,
+        CornerRadius = UDim.new(0, 8)
+    })
+
+    btn.MouseEnter:Connect(function()
+        Tween(btn, TweenInfo.new(0.2), {BackgroundTransparency = 0.1})
+    end)
+    btn.MouseLeave:Connect(function()
+        Tween(btn, TweenInfo.new(0.2), {BackgroundTransparency = 0.25})
+    end)
+    btn.MouseButton1Click:Connect(function()
+        if callback then
+            callback()
+        end
+    end)
+
+    return btnFrame
+end
+
+-- Create Color Picker
+function ArsenalKit:CreateColorPicker(parent, text, defaultColor, callback)
+    local picker = Create("Frame", {
+        Parent = parent,
+        Size = UDim2.new(1, 0, 0, 38),
+        BackgroundColor3 = Theme.Surface,
+        BackgroundTransparency = 0.55,
+        BorderSizePixel = 0,
+        LayoutOrder = #parent:GetChildren()
+    })
+    Create("UICorner", {
+        Parent = picker,
+        CornerRadius = UDim.new(0, 10)
+    })
+
+    Create("TextLabel", {
+        Parent = picker,
+        Size = UDim2.new(0.6, 0, 1, 0),
+        Position = UDim2.new(0, 14, 0, 0),
+        BackgroundTransparency = 1,
+        Text = text,
+        TextColor3 = Theme.Text,
+        Font = Enum.Font.SourceSans,
+        TextSize = 15,
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+
+    local colorBtn = Create("TextButton", {
+        Parent = picker,
+        Size = UDim2.new(0, 60, 0, 26),
+        Position = UDim2.new(1, -74, 0.5, -13),
+        BackgroundColor3 = defaultColor or Color3.fromRGB(255, 255, 255),
+        Text = "",
+        BorderSizePixel = 0,
+        AutoButtonColor = false
+    })
+    Create("UICorner", {
+        Parent = colorBtn,
+        CornerRadius = UDim.new(0, 6)
+    })
+
+    local colors = {
+        Color3.fromRGB(255, 0, 0), Color3.fromRGB(0, 255, 0), Color3.fromRGB(0, 0, 255),
+        Color3.fromRGB(255, 255, 0), Color3.fromRGB(255, 0, 255), Color3.fromRGB(0, 255, 255),
+        Color3.fromRGB(255, 255, 255), Color3.fromRGB(0, 0, 0), Color3.fromRGB(255, 128, 0),
+        Color3.fromRGB(128, 0, 255), Color3.fromRGB(0, 210, 255), Color3.fromRGB(255, 0, 128)
+    }
+    local colorIndex = 1
+
+    colorBtn.MouseButton1Click:Connect(function()
+        colorIndex = (colorIndex % #colors) + 1
+        local newColor = colors[colorIndex]
+        Tween(colorBtn, TweenInfo.new(0.2), {BackgroundColor3 = newColor})
+        if callback then
+            callback(newColor)
+        end
+    end)
+
+    return picker
+end
+
+-- Global input handler
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if ArsenalKit.BindMode and ArsenalKit.BindCallback then
+        if input.UserInputType ~= Enum.UserInputType.MouseMovement then
+            ArsenalKit.BindCallback(input)
+        end
+        return
+    end
+
+    if gameProcessed then return end
+
+    for _, bind in pairs(ArsenalKit.Keybinds) do
+        local match = false
+        if typeof(bind.Key) == "EnumItem" then
+            if bind.Key.EnumType == Enum.KeyCode and input.KeyCode == bind.Key then
+                match = true
+            elseif bind.Key.EnumType == Enum.UserInputType and input.UserInputType == bind.Key then
+                match = true
+            end
+        end
+
+        if match and bind.Callback then
+            bind.Callback()
         end
     end
 end)
 
-print("[ArsenalKit] v6 loaded. RightShift to toggle.")
+-- Module loading
+local BaseURL = "https://raw.githubusercontent.com/confessess/arsenal-script/main/modules/"
+local ModuleList = {
+    "aimbot",
+    "esp",
+    "weapon",
+    "world",
+    "movement",
+    "misc"
+}
+
+local LoadedCount = 0
+
+for _, moduleName in ipairs(ModuleList) do
+    local success, err = pcall(function()
+        local url = BaseURL .. moduleName .. ".lua?t=" .. tostring(tick())
+        local source = game:HttpGet(url, true)
+        if source and #source > 50 then
+            local func = loadstring(source)
+            if func then
+                func()
+                LoadedCount = LoadedCount + 1
+                print("[ArsenalKit] Loaded module: " .. moduleName)
+            else
+                warn("[ArsenalKit] Failed to compile: " .. moduleName)
+            end
+        else
+            warn("[ArsenalKit] Empty source: " .. moduleName)
+        end
+    end)
+
+    if not success then
+        warn("[ArsenalKit] Error loading " .. moduleName .. ": " .. tostring(err))
+    end
+end
+
+print("[ArsenalKit] Loader initialized - " .. LoadedCount .. "/" .. #ModuleList .. " modules loaded")

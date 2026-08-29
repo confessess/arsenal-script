@@ -1,241 +1,270 @@
---// ArsenalKit Module: Aimbot v6
---// Direct camera CFrame override - works in every executor
+-- ArsenalKit Aimbot Module
+-- Silent aim, sticky target, wall check, team check, FOV circle
 
-local ArsenalKit = _G.ArsenalKit
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
-local Camera = Workspace.CurrentCamera
+local TweenService = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+local Mouse = LocalPlayer:GetMouse()
 
---// Prevent double-load
-if ArsenalKit.Modules and ArsenalKit.Modules.Aimbot then return end
-ArsenalKit.Modules = ArsenalKit.Modules or {}
-ArsenalKit.Modules.Aimbot = true
+local ArsenalKit = _G.ArsenalKit
+if not ArsenalKit then return end
+if ArsenalKit.Features.AimbotLoaded then return end
+ArsenalKit.Features.AimbotLoaded = true
 
---// Settings
+-- Settings
 local Settings = {
     Enabled = false,
-    Keybind = Enum.KeyCode.Q,
     FOV = 120,
     Smoothing = 0.15,
-    TeamCheck = true,
+    TargetPart = "Head",
+    StickyTarget = false,
     WallCheck = true,
-    AimPart = "Head",
+    TeamCheck = true,
     ShowFOV = true,
-    StickyTarget = false
+    AimKey = Enum.KeyCode.Q
 }
 
---// State
 local CurrentTarget = nil
-
---// FOV Circle
 local FOVCircle = nil
-local HasDrawing = false
-if typeof(Drawing) == "table" and Drawing.new then
-    local ok, circle = pcall(function() return Drawing.new("Circle") end)
-    if ok and circle then
-        FOVCircle = circle
-        FOVCircle.Visible = false
-        FOVCircle.Thickness = 1.5
-        FOVCircle.Color = Color3.fromRGB(0, 170, 255)
-        FOVCircle.Transparency = 0.7
-        FOVCircle.Filled = false
-        FOVCircle.NumSides = 64
-        HasDrawing = true
+local AimbotConnection = nil
+
+-- Create UI
+local CombatTab = ArsenalKit:CreateTab("Combat")
+
+ArsenalKit:CreateSection(CombatTab, "Aimbot")
+ArsenalKit:CreateToggle(CombatTab, "Enabled", false, function(state)
+    Settings.Enabled = state
+end)
+
+ArsenalKit:CreateToggle(CombatTab, "Show FOV Circle", true, function(state)
+    Settings.ShowFOV = state
+    if FOVCircle then
+        FOVCircle.Visible = state and Settings.Enabled
     end
+end)
+
+ArsenalKit:CreateSlider(CombatTab, "FOV", 10, 360, 120, function(val)
+    Settings.FOV = val
+end)
+
+ArsenalKit:CreateSlider(CombatTab, "Smoothing", 1, 100, 15, function(val)
+    Settings.Smoothing = val / 100
+end)
+
+ArsenalKit:CreateDropdown(CombatTab, "Target Part", {"Head", "Torso", "HumanoidRootPart"}, "Head", function(choice)
+    Settings.TargetPart = choice
+end)
+
+ArsenalKit:CreateKeybind(CombatTab, "Aim Key", Enum.KeyCode.Q, function()
+    Settings.Enabled = not Settings.Enabled
+end)
+
+ArsenalKit:CreateToggle(CombatTab, "Sticky Target", false, function(state)
+    Settings.StickyTarget = state
+end)
+
+ArsenalKit:CreateToggle(CombatTab, "Wall Check", true, function(state)
+    Settings.WallCheck = state
+end)
+
+ArsenalKit:CreateToggle(CombatTab, "Team Check", true, function(state)
+    Settings.TeamCheck = state
+end)
+
+-- Utility functions
+local function GetCharacter(player)
+    return player.Character
 end
 
---// Is Alive
-local function IsAlive(char)
-    if not char then return false end
-    local hum = char:FindFirstChildOfClass("Humanoid")
+local function GetHumanoid(character)
+    return character:FindFirstChildOfClass("Humanoid")
+end
+
+local function GetTeam(player)
+    return player.Team
+end
+
+local function IsTeammate(player)
+    if not Settings.TeamCheck then return false end
+    local myTeam = GetTeam(LocalPlayer)
+    local theirTeam = GetTeam(player)
+    return myTeam and theirTeam and myTeam == theirTeam
+end
+
+local function IsAlive(character)
+    local hum = GetHumanoid(character)
     return hum and hum.Health > 0
 end
 
---// Wall Check
 local function IsVisible(targetPart)
     if not Settings.WallCheck then return true end
     if not targetPart then return false end
+
     local origin = Camera.CFrame.Position
-    local targetPos = targetPart.Position
-    local direction = targetPos - origin
-    local rayParams = RaycastParams.new()
-    rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
-    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-    local result = Workspace:Raycast(origin, direction.Unit * direction.Magnitude, rayParams)
-    if result then
-        return result.Instance:IsDescendantOf(targetPart.Parent)
-    end
-    return true
+    local direction = (targetPart.Position - origin).Unit
+    local distance = (targetPart.Position - origin).Magnitude
+
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, targetPart.Parent}
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+
+    local result = Workspace:Raycast(origin, direction * distance, raycastParams)
+    return result == nil
 end
 
---// Get target position
-local function GetTargetPos(player)
-    if not player then return nil end
-    local char = player.Character
-    if not char then return nil end
-    local part = char:FindFirstChild(Settings.AimPart)
-    if not part then
-        part = char:FindFirstChild("Head")
-        if not part then
-            part = char:FindFirstChild("HumanoidRootPart")
-        end
+local function GetTargetPart(character)
+    if Settings.TargetPart == "Head" then
+        return character:FindFirstChild("Head")
+    elseif Settings.TargetPart == "Torso" then
+        return character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso")
+    else
+        return character:FindFirstChild("HumanoidRootPart")
     end
-    if not part then return nil end
-    return part.Position
 end
 
---// Get target part for visibility
-local function GetTargetPart(player)
-    if not player then return nil end
-    local char = player.Character
-    if not char then return nil end
-    local part = char:FindFirstChild(Settings.AimPart)
-    if not part then part = char:FindFirstChild("Head") end
-    if not part then part = char:FindFirstChild("HumanoidRootPart") end
-    return part
+local function GetDistance(pos)
+    return (pos - Camera.CFrame.Position).Magnitude
 end
 
---// Screen distance
-local function GetScreenDist(player)
-    if player == LocalPlayer then return math.huge end
-    if Settings.TeamCheck and player.Team == LocalPlayer.Team then return math.huge end
-    local char = player.Character
-    if not char then return math.huge end
-    if not IsAlive(char) then return math.huge end
-    local pos = GetTargetPos(player)
-    if not pos then return math.huge end
-    if Settings.WallCheck then
-        local part = GetTargetPart(player)
-        if part and not IsVisible(part) then return math.huge end
-    end
+local function GetScreenPosition(pos)
     local screenPos, onScreen = Camera:WorldToViewportPoint(pos)
-    if not onScreen then return math.huge end
-    local mousePos = UserInputService:GetMouseLocation()
-    return (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+    return Vector2.new(screenPos.X, screenPos.Y), onScreen
 end
 
---// Find closest
-local function FindClosest()
+local function GetClosestPlayer()
     local closest = nil
-    local minDist = Settings.FOV
-    for _, player in ipairs(Players:GetPlayers()) do
-        local dist = GetScreenDist(player)
-        if dist < minDist then
-            minDist = dist
+    local closestDist = Settings.FOV
+    local mousePos = UserInputService:GetMouseLocation()
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+
+        local character = GetCharacter(player)
+        if not character then continue end
+
+        if not IsAlive(character) then continue end
+        if IsTeammate(player) then continue end
+
+        local targetPart = GetTargetPart(character)
+        if not targetPart then continue end
+
+        local screenPos, onScreen = GetScreenPosition(targetPart.Position)
+        if not onScreen then continue end
+
+        local distFromMouse = (screenPos - mousePos).Magnitude
+        if distFromMouse > Settings.FOV then continue end
+
+        if not IsVisible(targetPart) then continue end
+
+        if distFromMouse < closestDist then
             closest = player
+            closestDist = distFromMouse
         end
     end
+
     return closest
 end
 
---// Validate sticky target
-local function ValidateTarget(player)
-    if not player then return false end
-    if player == LocalPlayer then return false end
-    local char = player.Character
-    if not char then return false end
-    if not IsAlive(char) then return false end
-    if Settings.TeamCheck and player.Team == LocalPlayer.Team then return false end
-    local dist = GetScreenDist(player)
-    if dist > Settings.FOV * 1.5 then return false end
-    return true
+local function GetStickyTarget()
+    if not CurrentTarget then return nil end
+
+    local character = GetCharacter(CurrentTarget)
+    if not character then return nil end
+
+    if not IsAlive(character) then return nil end
+    if IsTeammate(CurrentTarget) then return nil end
+
+    local targetPart = GetTargetPart(character)
+    if not targetPart then return nil end
+
+    local screenPos, onScreen = GetScreenPosition(targetPart.Position)
+    if not onScreen then return nil end
+
+    local mousePos = UserInputService:GetMouseLocation()
+    local distFromMouse = (screenPos - mousePos).Magnitude
+    if distFromMouse > Settings.FOV * 1.5 then return nil end
+
+    if Settings.WallCheck and not IsVisible(targetPart) then return nil end
+
+    return CurrentTarget
 end
 
---// Main Loop - DIRECT CAMERA OVERRIDE
-RunService.RenderStepped:Connect(function()
-    local mousePos = UserInputService:GetMouseLocation()
+-- FOV Circle
+local function CreateFOVCircle()
+    local circle = Drawing.new("Circle")
+    circle.Visible = false
+    circle.Thickness = 1.5
+    circle.Color = Color3.fromRGB(0, 210, 255)
+    circle.Transparency = 0.7
+    circle.Filled = false
+    circle.NumSides = 64
+    return circle
+end
 
-    -- FOV Circle
-    if HasDrawing and FOVCircle then
-        FOVCircle.Position = mousePos
+FOVCircle = CreateFOVCircle()
+
+-- Aimbot loop
+AimbotConnection = RunService.RenderStepped:Connect(function()
+    -- Update FOV circle
+    if FOVCircle then
+        FOVCircle.Position = UserInputService:GetMouseLocation()
         FOVCircle.Radius = Settings.FOV
-        FOVCircle.Visible = Settings.ShowFOV
-        FOVCircle.Color = Settings.Enabled and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(0, 170, 255)
+        FOVCircle.Visible = Settings.Enabled and Settings.ShowFOV
+        FOVCircle.Color = Settings.Enabled and Color3.fromRGB(0, 255, 140) or Color3.fromRGB(0, 210, 255)
     end
 
-    -- Sticky target
+    if not Settings.Enabled then
+        CurrentTarget = nil
+        return
+    end
+
+    -- Get target
+    local target
     if Settings.StickyTarget and CurrentTarget then
-        if not ValidateTarget(CurrentTarget) then
-            CurrentTarget = nil
-        end
+        target = GetStickyTarget()
     end
 
-    -- Find target
-    if not CurrentTarget or not Settings.StickyTarget then
-        CurrentTarget = FindClosest()
+    if not target then
+        target = GetClosestPlayer()
+        CurrentTarget = target
     end
 
-    -- AIM - Direct camera override
-    if Settings.Enabled and CurrentTarget then
-        local targetPos = GetTargetPos(CurrentTarget)
-        if targetPos then
-            -- Method 1: mousemoverel (if available)
-            local screenPos = Camera:WorldToViewportPoint(targetPos)
-            local targetScreen = Vector2.new(screenPos.X, screenPos.Y)
-            local delta = (targetScreen - mousePos) * Settings.Smoothing
+    if not target then return end
 
-            if typeof(mousemoverel) == "function" then
-                mousemoverel(delta.X, delta.Y)
-            else
-                -- Method 2: Direct camera CFrame (always works)
-                local currentPos = Camera.CFrame.Position
-                local newCF = CFrame.new(currentPos, targetPos)
-                Camera.CFrame = Camera.CFrame:Lerp(newCF, Settings.Smoothing)
-            end
-        end
-    end
-end)
+    local character = GetCharacter(target)
+    if not character then return end
 
---// Build UI
-local Tab = ArsenalKit:CreateTab("Combat", "C")
+    local targetPart = GetTargetPart(character)
+    if not targetPart then return end
 
-ArsenalKit:CreateSection(Tab, "Aimbot")
+    -- Silent aim via mousemoverel
+    local screenPos = Camera:WorldToViewportPoint(targetPart.Position)
+    local mousePos = UserInputService:GetMouseLocation()
+    local targetScreenPos = Vector2.new(screenPos.X, screenPos.Y)
 
-ArsenalKit:CreateToggle(Tab, "Enabled", false, function(v)
-    Settings.Enabled = v
-end)
+    local delta = targetScreenPos - mousePos
+    local smooth = Settings.Smoothing
 
-ArsenalKit:CreateKeybind(Tab, "Aim Key", Settings.Keybind, function(key, pressed)
-    if pressed then
-        Settings.Enabled = not Settings.Enabled
+    -- Apply smoothing
+    local moveX = delta.X * smooth
+    local moveY = delta.Y * smooth
+
+    -- Use mousemoverel if available
+    if mousemoverel then
+        mousemoverel(moveX, moveY)
     else
-        Settings.Keybind = key
+        -- Fallback: rotate camera
+        local currentCF = Camera.CFrame
+        local targetCF = CFrame.new(currentCF.Position, targetPart.Position)
+        Camera.CFrame = currentCF:Lerp(targetCF, smooth)
     end
 end)
 
-ArsenalKit:CreateDropdown(Tab, "Aim Part", {"Head", "Torso", "HumanoidRootPart"}, "Head", function(v)
-    Settings.AimPart = v
-end)
+table.insert(ArsenalKit.Connections, AimbotConnection)
 
-ArsenalKit:CreateSlider(Tab, "FOV", 10, 500, 120, function(v)
-    Settings.FOV = v
-end)
-
-ArsenalKit:CreateSlider(Tab, "Smoothing", 1, 100, 15, function(v)
-    Settings.Smoothing = v / 100
-end)
-
-ArsenalKit:CreateToggle(Tab, "Show FOV Circle", true, function(v)
-    Settings.ShowFOV = v
-end)
-
-ArsenalKit:CreateToggle(Tab, "Sticky Target", false, function(v)
-    Settings.StickyTarget = v
-    if not v then CurrentTarget = nil end
-end)
-
-ArsenalKit:CreateSection(Tab, "Filters")
-
-ArsenalKit:CreateToggle(Tab, "Team Check", true, function(v)
-    Settings.TeamCheck = v
-end)
-
-ArsenalKit:CreateToggle(Tab, "Wall Check", true, function(v)
-    Settings.WallCheck = v
-end)
-
-print("[ArsenalKit] Aimbot v6 loaded")
+print("[ArsenalKit] Aimbot module loaded")

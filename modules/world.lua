@@ -1,94 +1,116 @@
---// ArsenalKit Module: World
---// Features: Fullbright, No Fog, FOV Changer, No Shadows, Time Changer
+-- ArsenalKit World Module
+-- Fullbright, no fog, custom sky, FOV changer
 
-local ArsenalKit = _G.ArsenalKit
---// Prevent double-load
-if ArsenalKit.Modules and ArsenalKit.Modules.World then return end
-ArsenalKit.Modules = ArsenalKit.Modules or {}
-ArsenalKit.Modules.World = true
-
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
-local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
 
-local Camera = Workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+local ArsenalKit = _G.ArsenalKit
+if not ArsenalKit then return end
+if ArsenalKit.Features.WorldLoaded then return end
+ArsenalKit.Features.WorldLoaded = true
 
---// Settings
 local Settings = {
     Fullbright = false,
     NoFog = false,
-    FOV = 90,
-    NoShadows = false,
-    TimeOfDay = 12,
-    AmbientColor = Color3.fromRGB(255, 255, 255)
+    CustomSky = false,
+    SkyType = "Night",
+    FOVChanger = false,
+    FOVValue = 90
 }
 
---// Original Values Cache
-local OriginalAmbient = Lighting.Ambient
-local OriginalBrightness = Lighting.Brightness
-local OriginalFogStart = Lighting.FogStart
-local OriginalFogEnd = Lighting.FogEnd
-local OriginalFogColor = Lighting.FogColor
-local OriginalGlobalShadows = Lighting.GlobalShadows
-local OriginalTime = Lighting.TimeOfDay
-local OriginalFOV = Camera.FieldOfView
+local WorldTab = ArsenalKit:CreateTab("World")
 
---// Fullbright
-RunService.RenderStepped:Connect(function()
-    if Settings.Fullbright then
-        Lighting.Ambient = Settings.AmbientColor
+ArsenalKit:CreateSection(WorldTab, "World Mods")
+ArsenalKit:CreateToggle(WorldTab, "Fullbright", false, function(state)
+    Settings.Fullbright = state
+    if state then
         Lighting.Brightness = 10
         Lighting.GlobalShadows = false
-    elseif not Settings.NoShadows then
-        Lighting.Ambient = OriginalAmbient
-        Lighting.Brightness = OriginalBrightness
-        Lighting.GlobalShadows = OriginalGlobalShadows
+        Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+        Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+    else
+        Lighting.Brightness = 2
+        Lighting.GlobalShadows = true
+        Lighting.Ambient = Color3.fromRGB(128, 128, 128)
+        Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
     end
+end)
 
-    if Settings.NoFog then
-        Lighting.FogStart = 0
+ArsenalKit:CreateToggle(WorldTab, "No Fog", false, function(state)
+    Settings.NoFog = state
+    if state then
+        Lighting.FogStart = 999999
         Lighting.FogEnd = 999999
-        Lighting.FogColor = Color3.fromRGB(255, 255, 255)
-    elseif not Settings.Fullbright then
-        Lighting.FogStart = OriginalFogStart
-        Lighting.FogEnd = OriginalFogEnd
-        Lighting.FogColor = OriginalFogColor
+        Lighting.FogColor = Color3.fromRGB(0, 0, 0)
     end
+end)
 
-    if Settings.NoShadows then
+ArsenalKit:CreateToggle(WorldTab, "Custom Sky", false, function(state)
+    Settings.CustomSky = state
+    if state then
+        for _, v in pairs(Lighting:GetChildren()) do
+            if v:IsA("Sky") then
+                v:Destroy()
+            end
+        end
+        local sky = Instance.new("Sky")
+        if Settings.SkyType == "Night" then
+            sky.SkyboxBk = "rbxassetid://159454299"
+            sky.SkyboxDn = "rbxassetid://159454299"
+            sky.SkyboxFt = "rbxassetid://159454299"
+            sky.SkyboxLf = "rbxassetid://159454299"
+            sky.SkyboxRt = "rbxassetid://159454299"
+            sky.SkyboxUp = "rbxassetid://159454299"
+        elseif Settings.SkyType == "Space" then
+            sky.SkyboxBk = "rbxassetid://159248188"
+            sky.SkyboxDn = "rbxassetid://159248188"
+            sky.SkyboxFt = "rbxassetid://159248188"
+            sky.SkyboxLf = "rbxassetid://159248188"
+            sky.SkyboxRt = "rbxassetid://159248188"
+            sky.SkyboxUp = "rbxassetid://159248188"
+        elseif Settings.SkyType == "Sunset" then
+            sky.SkyboxBk = "rbxassetid://150335524"
+            sky.SkyboxDn = "rbxassetid://150335524"
+            sky.SkyboxFt = "rbxassetid://150335524"
+            sky.SkyboxLf = "rbxassetid://150335524"
+            sky.SkyboxRt = "rbxassetid://150335524"
+            sky.SkyboxUp = "rbxassetid://150335524"
+        end
+        sky.Parent = Lighting
+    end
+end)
+
+ArsenalKit:CreateDropdown(WorldTab, "Sky Type", {"Night", "Space", "Sunset"}, "Night", function(choice)
+    Settings.SkyType = choice
+end)
+
+ArsenalKit:CreateToggle(WorldTab, "FOV Changer", false, function(state)
+    Settings.FOVChanger = state
+end)
+
+ArsenalKit:CreateSlider(WorldTab, "FOV", 30, 140, 90, function(val)
+    Settings.FOVValue = val
+end)
+
+local WorldConnection = RunService.RenderStepped:Connect(function()
+    if Settings.FOVChanger then
+        local camera = workspace.CurrentCamera
+        if camera then
+            camera.FieldOfView = Settings.FOVValue
+        end
+    end
+    if Settings.NoFog then
+        Lighting.FogStart = 999999
+        Lighting.FogEnd = 999999
+    end
+    if Settings.Fullbright then
+        Lighting.Brightness = 10
         Lighting.GlobalShadows = false
-    elseif not Settings.Fullbright then
-        Lighting.GlobalShadows = OriginalGlobalShadows
     end
-
-    Camera.FieldOfView = Settings.FOV
 end)
 
---// Build UI
-local Tab = ArsenalKit:CreateTab("World", "E")
-
-ArsenalKit:CreateSection(Tab, "Visuals")
-
-ArsenalKit:CreateToggle(Tab, "Fullbright", false, function(v)
-    Settings.Fullbright = v
-end)
-
-ArsenalKit:CreateToggle(Tab, "No Fog", false, function(v)
-    Settings.NoFog = v
-end)
-
-ArsenalKit:CreateToggle(Tab, "No Shadows", false, function(v)
-    Settings.NoShadows = v
-end)
-
-ArsenalKit:CreateSlider(Tab, "FOV Changer", 30, 150, 90, function(v)
-    Settings.FOV = v
-end)
-
-ArsenalKit:CreateSlider(Tab, "Time of Day", 0, 24, 12, function(v)
-    Settings.TimeOfDay = v
-    Lighting.TimeOfDay = v .. ":00:00"
-end)
+table.insert(ArsenalKit.Connections, WorldConnection)
 
 print("[ArsenalKit] World module loaded")

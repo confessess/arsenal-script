@@ -1,281 +1,289 @@
---// ArsenalKit Module: Weapon
---// Features: No Recoil, No Spread, Rapid Fire, Instant Reload, Auto Fire, Infinite Ammo
---// Safe for all executors - no getgc, no debug library, no hookmetamethod
+-- ArsenalKit Weapon Module
+-- No recoil, no spread, rapid fire, instant reload, gun color changer, weapon scanner
 
-local ArsenalKit = _G.ArsenalKit
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
-local Camera = Workspace.CurrentCamera
 
 local LocalPlayer = Players.LocalPlayer
+local ArsenalKit = _G.ArsenalKit
+if not ArsenalKit then return end
+if ArsenalKit.Features.WeaponLoaded then return end
+ArsenalKit.Features.WeaponLoaded = true
 
---// Prevent double-load
-if ArsenalKit.Modules and ArsenalKit.Modules.Weapon then return end
-ArsenalKit.Modules = ArsenalKit.Modules or {}
-ArsenalKit.Modules.Weapon = true
-
---// Settings
+-- Settings
 local Settings = {
     NoRecoil = false,
     NoSpread = false,
     RapidFire = false,
     InstantReload = false,
-    AutoFire = false,
     InfiniteAmmo = false,
-    FireRate = 0.05,
+    GunColor = false,
+    GunColorValue = Color3.fromRGB(0, 210, 255),
     DebugMode = false
 }
 
---// State
-local WeaponCache = {}
-local AutoFireConnection = nil
-local LastTool = nil
-local LastCamCF = nil
+local WeaponConnection = nil
+local ColorConnection = nil
+local OriginalValues = {}
 
---// Debug Print
-local function DebugPrint(...)
-    if Settings.DebugMode then
-        print("[Weapon]", ...)
+-- Create UI
+local WeaponTab = ArsenalKit:CreateTab("Weapon")
+
+ArsenalKit:CreateSection(WeaponTab, "Weapon Mods")
+ArsenalKit:CreateToggle(WeaponTab, "No Recoil", false, function(state)
+    Settings.NoRecoil = state
+end)
+
+ArsenalKit:CreateToggle(WeaponTab, "No Spread", false, function(state)
+    Settings.NoSpread = state
+end)
+
+ArsenalKit:CreateToggle(WeaponTab, "Rapid Fire", false, function(state)
+    Settings.RapidFire = state
+end)
+
+ArsenalKit:CreateToggle(WeaponTab, "Instant Reload", false, function(state)
+    Settings.InstantReload = state
+end)
+
+ArsenalKit:CreateToggle(WeaponTab, "Infinite Ammo", false, function(state)
+    Settings.InfiniteAmmo = state
+end)
+
+ArsenalKit:CreateSection(WeaponTab, "Gun Color")
+ArsenalKit:CreateToggle(WeaponTab, "Enable Color", false, function(state)
+    Settings.GunColor = state
+end)
+
+ArsenalKit:CreateColorPicker(WeaponTab, "Gun Color", Color3.fromRGB(0, 210, 255), function(color)
+    Settings.GunColorValue = color
+end)
+
+ArsenalKit:CreateSection(WeaponTab, "Debug")
+ArsenalKit:CreateToggle(WeaponTab, "Debug Mode", false, function(state)
+    Settings.DebugMode = state
+end)
+
+ArsenalKit:CreateButton(WeaponTab, "Scan Current Weapon", function()
+    local character = LocalPlayer.Character
+    if not character then
+        print("[ArsenalKit] No character found")
+        return
     end
-end
 
---// Utility: Get Current Tool
+    local tool = character:FindFirstChildOfClass("Tool")
+    if not tool then
+        print("[ArsenalKit] No tool equipped")
+        return
+    end
+
+    print("[ArsenalKit] === WEAPON SCAN: " .. tool.Name .. " ===")
+
+    -- Scan all descendants
+    for _, desc in pairs(tool:GetDescendants()) do
+        if desc:IsA("BaseValue") then
+            print("[ArsenalKit] Value: " .. desc.Name .. " = " .. tostring(desc.Value) .. " (" .. desc.ClassName .. ")")
+        end
+        if desc:IsA("BasePart") then
+            print("[ArsenalKit] Part: " .. desc.Name .. " Color=" .. tostring(desc.Color))
+        end
+        -- Check attributes
+        for attrName, attrValue in pairs(desc:GetAttributes()) do
+            print("[ArsenalKit] Attribute: " .. desc.Name .. "." .. attrName .. " = " .. tostring(attrValue))
+        end
+    end
+
+    -- Check tool attributes
+    for attrName, attrValue in pairs(tool:GetAttributes()) do
+        print("[ArsenalKit] Tool Attribute: " .. attrName .. " = " .. tostring(attrValue))
+    end
+
+    print("[ArsenalKit] === END SCAN ===")
+end)
+
+-- Known Arsenal weapon names (common ones)
+local KnownWeapons = {
+    "M4A1", "AK-47", "Deagle", "AWP", "P90", "MAC-10", "AA-12", "SPAS-12",
+    "AUG A3", "M249", "SCAR-H", "SCAR-L", "G11", "FAMAS", "Galil",
+    "M1911", "Glock-18", "Python", "Luger", "Makarov", "Webley",
+    "MP5K", "MP7", "UMP-45", "P250", "Five-SeveN", "Tec-9",
+    "M40", "Dragunov", "Springfield Rifle", "SKS", "Mosin-Nagant",
+    "DB Shotgun", "Lever Shotgun", "Pump Shotgun", "Trench Gun",
+    "Minigun", "Gatling Gun", "MG36", "BAR", "M1919A6",
+    "Rocket Launcher", "RPG", "Railgun", "Laser Rifle", "Plasma Launcher",
+    "Crossbow", "Autobow", "Bow", "Golden Bow",
+    "Flamethrower", "Concussion Rifle", "Spellbook", "Firebrand",
+    "Golden Gun", "Windicator", "Hush Puppy", "Golden Hush Puppy",
+    "Tommy Gun", "Grease Gun", "STEN", "M3",
+    "R800", "Handcannon", "Hi-Power", "Pathbringer", "Peacemaker",
+    "Armament", "Dispensor", "Cone Launcher", "Acid Spitter",
+    "Nailgun", "Peppergun", "Ice Stars", "Sunflower Sun",
+    "Potassium Power", "Trash Can", "Literal Gun", "Falkour",
+    "XR15", "MK18", "M16A2", "M14", "Henry Rifle",
+    "DB Chauchat", "Inertial Shotgun", "MAG-7", "Nova",
+    "Sawed Off", "XM1014", "Benelli M4", "KSG-12",
+    "Dual LCRs", "Union Pistol", "FMG-9", "Micro Uzis",
+    "Uzi", "Vector", "KRISS", "Scorpion",
+    "Candy Cane Miniguns", "Peppermint Rifle", "Presents",
+    "Snowball", "Water Balloon", "Ultraball", "Trowel",
+    "PIZZA", "Machete", "Bat", "Pan", "Butterfly Knife",
+    "Brass Knuckles", "Fisticuffs", "Icicle", "Battle Axe",
+    "Musket", "G-19X", "Maxim-9", "Creagle", "Golden Creagle",
+    "Admin Launcher", "Influencer Launcher"
+}
+
+-- Get current tool
 local function GetCurrentTool()
-    local char = LocalPlayer.Character
-    if not char then return nil end
-    for _, obj in ipairs(char:GetChildren()) do
-        if obj:IsA("Tool") then return obj end
-    end
-    local backpack = LocalPlayer:FindFirstChild("Backpack")
-    if backpack then
-        for _, tool in ipairs(backpack:GetChildren()) do
-            if tool:IsA("Tool") then return tool end
-        end
-    end
-    return nil
+    local character = LocalPlayer.Character
+    if not character then return nil end
+    return character:FindFirstChildOfClass("Tool")
 end
 
---// Utility: Scan Weapon for Moddable Values
-local function ScanWeapon(tool)
-    if not tool then return {} end
-    local found = {}
+-- Apply gun color
+local function ApplyGunColor(tool)
+    if not tool then return end
+    if not Settings.GunColor then return end
 
-    for _, obj in ipairs(tool:GetDescendants()) do
-        -- Number/Int/Double values
-        if obj:IsA("NumberValue") or obj:IsA("IntValue") or obj:IsA("DoubleConstrainedValue") then
-            local name = obj.Name:lower()
-            local cat = nil
-            if name:find("recoil") or name:find("kick") or name:find("camshake") or name:find("camkick") or name:find("muzzle") then
-                cat = "Recoil"
-            elseif name:find("spread") or name:find("accuracy") or name:find("cone") or name:find("deviation") or name:find("hip") then
-                cat = "Spread"
-            elseif name:find("firerate") or name:find("rpm") or name:find("speed") or name:find("rate") or name:find("cooldown") then
-                cat = "FireRate"
-            elseif name:find("reload") then
-                cat = "Reload"
-            elseif name:find("ammo") or name:find("clip") or name:find("mag") or name:find("round") or name:find("bullet") then
-                cat = "Ammo"
-            elseif name:find("damage") or name:find("dmg") then
-                cat = "Damage"
-            end
-            if cat then
-                table.insert(found, {Type="Value", Object=obj, Category=cat, Name=obj.Name, Original=obj.Value})
-            end
-        end
-
-        -- Attributes (newer Roblox feature)
-        for attrName, attrVal in pairs(obj:GetAttributes()) do
-            local al = attrName:lower()
-            local cat = nil
-            if type(attrVal) == "number" then
-                if al:find("recoil") or al:find("kick") or al:find("muzzle") then cat = "Recoil"
-                elseif al:find("spread") or al:find("accuracy") or al:find("cone") then cat = "Spread"
-                elseif al:find("firerate") or al:find("rpm") or al:find("cooldown") then cat = "FireRate"
-                elseif al:find("reload") then cat = "Reload"
-                elseif al:find("ammo") or al:find("clip") or al:find("mag") then cat = "Ammo"
-                elseif al:find("damage") then cat = "Damage"
-                end
-                if cat then
-                    table.insert(found, {Type="Attribute", Object=obj, Category=cat, Name=attrName, Original=attrVal, IsAttribute=true})
-                end
-            end
+    for _, part in pairs(tool:GetDescendants()) do
+        if part:IsA("BasePart") and part.Name ~= "Handle" then
+            part.Color = Settings.GunColorValue
+            part.Material = Enum.Material.Neon
         end
     end
-
-    return found
 end
 
---// Apply Weapon Mods
-local function ApplyWeaponMods()
+-- Weapon mod loop
+WeaponConnection = RunService.Heartbeat:Connect(function()
     local tool = GetCurrentTool()
     if not tool then return end
 
-    if not WeaponCache[tool] then
-        WeaponCache[tool] = ScanWeapon(tool)
-        DebugPrint("Scanned", tool.Name, "- found", #WeaponCache[tool], "moddable values")
+    -- Apply color
+    if Settings.GunColor then
+        ApplyGunColor(tool)
     end
 
-    for _, info in ipairs(WeaponCache[tool]) do
-        if info.Category == "Recoil" and Settings.NoRecoil then
-            if info.IsAttribute then info.Object:SetAttribute(info.Name, 0)
-            else info.Object.Value = 0 end
-        end
-        if info.Category == "Spread" and Settings.NoSpread then
-            if info.IsAttribute then info.Object:SetAttribute(info.Name, 0)
-            else info.Object.Value = 0 end
-        end
-        if info.Category == "FireRate" and Settings.RapidFire then
-            if info.IsAttribute then info.Object:SetAttribute(info.Name, 1/Settings.FireRate)
-            else info.Object.Value = 1/Settings.FireRate end
-        end
-        if info.Category == "Reload" and Settings.InstantReload then
-            if info.IsAttribute then info.Object:SetAttribute(info.Name, 0.01)
-            else info.Object.Value = 0.01 end
-        end
-        if info.Category == "Ammo" and Settings.InfiniteAmmo then
-            if not info.Name:lower():find("max") and not info.Name:lower():find("total") and not info.Name:lower():find("reserve") then
-                if info.IsAttribute then info.Object:SetAttribute(info.Name, 999)
-                else info.Object.Value = 999 end
-            end
-        end
-    end
-end
+    -- Scan for weapon values
+    for _, desc in pairs(tool:GetDescendants()) do
+        if desc:IsA("NumberValue") or desc:IsA("IntValue") then
+            local name = desc.Name:lower()
 
---// Camera Recoil Counter (Method 2 - no getgc needed)
-RunService.RenderStepped:Connect(function()
-    -- Method 1: Value scanning
-    ApplyWeaponMods()
-
-    -- Method 2: Camera recoil dampening
-    if Settings.NoRecoil and LastCamCF then
-        -- Detect and counter sudden camera rotation changes
-        local currentCF = Camera.CFrame
-        local pos = currentCF.Position
-        local lastPos = LastCamCF.Position
-
-        -- If camera position is same but rotation changed significantly upward, counter it
-        if (pos - lastPos).Magnitude < 0.1 then
-            -- Camera didn't move positionally, check rotation
-            local lookDiff = currentCF.LookVector - LastCamCF.LookVector
-            -- If looking up suddenly (negative Y change), dampen it
-            if lookDiff.Y < -0.01 then
-                local correctedLook = Vector3.new(currentCF.LookVector.X, LastCamCF.LookVector.Y, currentCF.LookVector.Z).Unit
-                local newCF = CFrame.new(pos, pos + correctedLook)
-                Camera.CFrame = newCF
-            end
-        end
-    end
-    LastCamCF = Camera.CFrame
-end)
-
---// Auto Fire
-local function StartAutoFire()
-    if AutoFireConnection then return end
-    AutoFireConnection = RunService.Heartbeat:Connect(function()
-        if not Settings.AutoFire then return end
-        local tool = GetCurrentTool()
-        if tool and tool.Parent == LocalPlayer.Character then
-            pcall(function() tool:Activate() end)
-        end
-    end)
-end
-
-local function StopAutoFire()
-    if AutoFireConnection then
-        AutoFireConnection:Disconnect()
-        AutoFireConnection = nil
-    end
-end
-
---// Tool change detection
-RunService.Heartbeat:Connect(function()
-    local current = GetCurrentTool()
-    if current ~= LastTool then
-        LastTool = current
-        if current then
-            WeaponCache = {}
-            DebugPrint("Equipped:", current.Name)
-        end
-    end
-end)
-
---// Build UI
-local Tab = ArsenalKit:CreateTab("Weapon", "W")
-
-ArsenalKit:CreateSection(Tab, "Combat Mods")
-
-ArsenalKit:CreateToggle(Tab, "No Recoil", false, function(v)
-    Settings.NoRecoil = v
-    WeaponCache = {}
-end)
-
-ArsenalKit:CreateToggle(Tab, "No Spread", false, function(v)
-    Settings.NoSpread = v
-    WeaponCache = {}
-end)
-
-ArsenalKit:CreateToggle(Tab, "Rapid Fire", false, function(v)
-    Settings.RapidFire = v
-    WeaponCache = {}
-end)
-
-ArsenalKit:CreateSlider(Tab, "Fire Rate", 1, 50, 20, function(v)
-    Settings.FireRate = 1 / v
-end)
-
-ArsenalKit:CreateToggle(Tab, "Instant Reload", false, function(v)
-    Settings.InstantReload = v
-    WeaponCache = {}
-end)
-
-ArsenalKit:CreateToggle(Tab, "Auto Fire", false, function(v)
-    Settings.AutoFire = v
-    if v then StartAutoFire() else StopAutoFire() end
-end)
-
-ArsenalKit:CreateToggle(Tab, "Infinite Ammo", false, function(v)
-    Settings.InfiniteAmmo = v
-    WeaponCache = {}
-end)
-
-ArsenalKit:CreateSection(Tab, "Debug")
-
-ArsenalKit:CreateToggle(Tab, "Debug Mode", false, function(v)
-    Settings.DebugMode = v
-    if v then
-        WeaponCache = {}
-        local tool = GetCurrentTool()
-        if tool then
-            print("[Weapon] === DEBUG SCAN ===")
-            print("[Weapon] Tool:", tool.Name)
-            print("[Weapon] Path:", tool:GetFullName())
-            for _, obj in ipairs(tool:GetDescendants()) do
-                if obj:IsA("ValueBase") then
-                    print("[Weapon]  Value:", obj:GetFullName(), "=", obj.Value)
+            -- No recoil
+            if Settings.NoRecoil then
+                if name:find("recoil") or name:find("kick") or name:find("rise") then
+                    if not OriginalValues[desc] then
+                        OriginalValues[desc] = desc.Value
+                    end
+                    desc.Value = 0
                 end
-                for attrName, attrVal in pairs(obj:GetAttributes()) do
-                    if type(attrVal) == "number" then
-                        print("[Weapon]  Attr:", obj.Name, ".", attrName, "=", attrVal)
+            elseif OriginalValues[desc] then
+                desc.Value = OriginalValues[desc]
+                OriginalValues[desc] = nil
+            end
+
+            -- No spread
+            if Settings.NoSpread then
+                if name:find("spread") or name:find("accuracy") or name:find("cone") then
+                    if not OriginalValues[desc] then
+                        OriginalValues[desc] = desc.Value
+                    end
+                    desc.Value = 0
+                end
+            elseif OriginalValues[desc] then
+                desc.Value = OriginalValues[desc]
+                OriginalValues[desc] = nil
+            end
+
+            -- Rapid fire
+            if Settings.RapidFire then
+                if name:find("firerate") or name:find("fire_rate") or name:find("rpm") or name:find("cooldown") then
+                    if not OriginalValues[desc] then
+                        OriginalValues[desc] = desc.Value
+                    end
+                    if name:find("cooldown") then
+                        desc.Value = 0.01
+                    else
+                        desc.Value = 9999
                     end
                 end
+            elseif OriginalValues[desc] then
+                desc.Value = OriginalValues[desc]
+                OriginalValues[desc] = nil
             end
-            print("[Weapon] === END SCAN ===")
-        else
-            print("[Weapon] No tool equipped. Equip a weapon and toggle again.")
+
+            -- Instant reload
+            if Settings.InstantReload then
+                if name:find("reload") or name:find("reloadtime") then
+                    if not OriginalValues[desc] then
+                        OriginalValues[desc] = desc.Value
+                    end
+                    desc.Value = 0.01
+                end
+            elseif OriginalValues[desc] then
+                desc.Value = OriginalValues[desc]
+                OriginalValues[desc] = nil
+            end
+
+            -- Infinite ammo
+            if Settings.InfiniteAmmo then
+                if name:find("ammo") or name:find("clip") or name:find("mag") then
+                    if not OriginalValues[desc] then
+                        OriginalValues[desc] = desc.Value
+                    end
+                    desc.Value = 999
+                end
+            elseif OriginalValues[desc] then
+                desc.Value = OriginalValues[desc]
+                OriginalValues[desc] = nil
+            end
+        end
+
+        -- Check attributes too
+        if Settings.DebugMode then
+            for attrName, attrValue in pairs(desc:GetAttributes()) do
+                local attrLower = attrName:lower()
+                if attrLower:find("recoil") or attrLower:find("spread") or attrLower:find("firerate") or attrLower:find("reload") then
+                    print("[ArsenalKit] Attribute found: " .. desc.Name .. "." .. attrName .. " = " .. tostring(attrValue))
+                end
+            end
+        end
+    end
+
+    -- Tool-level attributes
+    for attrName, attrValue in pairs(tool:GetAttributes()) do
+        local attrLower = attrName:lower()
+
+        if Settings.NoRecoil and (attrLower:find("recoil") or attrLower:find("kick")) then
+            if not OriginalValues["tool_" .. attrName] then
+                OriginalValues["tool_" .. attrName] = attrValue
+            end
+            tool:SetAttribute(attrName, 0)
+        end
+
+        if Settings.NoSpread and attrLower:find("spread") then
+            if not OriginalValues["tool_" .. attrName] then
+                OriginalValues["tool_" .. attrName] = attrValue
+            end
+            tool:SetAttribute(attrName, 0)
+        end
+
+        if Settings.RapidFire and (attrLower:find("firerate") or attrLower:find("rpm")) then
+            if not OriginalValues["tool_" .. attrName] then
+                OriginalValues["tool_" .. attrName] = attrValue
+            end
+            tool:SetAttribute(attrName, 9999)
+        end
+
+        if Settings.InstantReload and attrLower:find("reload") then
+            if not OriginalValues["tool_" .. attrName] then
+                OriginalValues["tool_" .. attrName] = attrValue
+            end
+            tool:SetAttribute(attrName, 0.01)
         end
     end
 end)
 
-ArsenalKit:CreateButton(Tab, "Rescan Weapon", function()
-    WeaponCache = {}
-    local tool = GetCurrentTool()
-    if tool then
-        print("[Weapon] Rescanned:", tool.Name)
-    else
-        print("[Weapon] No tool equipped")
-    end
-end)
+table.insert(ArsenalKit.Connections, WeaponConnection)
 
 print("[ArsenalKit] Weapon module loaded")
+print("[ArsenalKit] Known Arsenal weapons: " .. #KnownWeapons .. " in database")
