@@ -1,4 +1,4 @@
---// ARSENALKIT v2.3 — Modular Loader
+--// ARSENALKIT v2.4 — Modular Loader
 --// Loader + UI Framework — loads modules from GitHub raw URLs
 
 local Players = game:GetService("Players")
@@ -26,6 +26,8 @@ getgenv().ArsenalKit = {
     Features = {},
     Connections = {},
     Settings = {},
+    ModuleErrors = {},
+    LoadedModules = {},
     Theme = {
         Background = Color3.fromRGB(4, 8, 16),
         Glass = Color3.fromRGB(8, 15, 28),
@@ -378,7 +380,7 @@ Content.Parent = Body
 ArsenalKit.UI.Content = Content
 
 --========================================================
--- MINIMIZE LOGIC (single connection, Body exists now)
+-- MINIMIZE LOGIC
 --========================================================
 
 Minimize.MouseButton1Click:Connect(function()
@@ -548,17 +550,6 @@ function ArsenalKit:CreateTab(name, iconText)
     }
     table.insert(ArsenalKit.Tabs, tab)
 
-    if #ArsenalKit.Tabs == 1 then
-        task.delay(0.15, function()
-            local success, err = pcall(function()
-                ArsenalKit:SwitchTab(tab)
-            end)
-            if not success then
-                warn("[ArsenalKit] Auto-switch error: " .. tostring(err))
-            end
-        end)
-    end
-
     return scroll
 end
 
@@ -574,7 +565,7 @@ function ArsenalKit:SwitchTab(targetTab)
         if indicator then Tween(indicator, 0.2, {BackgroundTransparency = 1, Size = UDim2.fromOffset(3, 18)}):Play() end
     end
 
-    -- Hide old page instantly (no tween - simpler, more reliable)
+    -- Hide old page
     if CurrentPageName and Pages[CurrentPageName] then
         Pages[CurrentPageName].Visible = false
         Pages[CurrentPageName].Position = UDim2.fromOffset(14, 0)
@@ -1086,7 +1077,7 @@ FooterLeft.Parent = Footer
 local FooterRight = Instance.new("TextLabel")
 FooterRight.Size = UDim2.fromOffset(220, 25)
 FooterRight.Position = UDim2.new(1, -220, 0, 0)
-Text(FooterRight, "ARSENALKIT  •  v2.3.0", 7, Theme.Muted, true)
+Text(FooterRight, "ARSENALKIT  •  v2.4.0", 7, Theme.Muted, true)
 FooterRight.TextXAlignment = Enum.TextXAlignment.Right
 FooterRight.TextYAlignment = Enum.TextYAlignment.Center
 FooterRight.ZIndex = 8
@@ -1165,72 +1156,6 @@ AddConnection(UserInputService.InputBegan:Connect(function(input, gameProcessed)
 end))
 
 --========================================================
--- SETTINGS TAB (built-in, no module needed)
---========================================================
-
-local SettingsTab = ArsenalKit:CreateTab("Settings")
-local SettingsSection = ArsenalKit:CreateSection(SettingsTab, "UI SETTINGS", "Customize the ArsenalKit interface.")
-
--- UI Toggle Keybind
-ArsenalKit:CreateKeybind(SettingsSection, "UI Toggle Key", Enum.KeyCode.RightShift, function()
-    UIVisible = not UIVisible
-    Main.Visible = UIVisible
-    OuterGlow.Visible = UIVisible
-    InnerGlow.Visible = UIVisible
-    Backdrop.Visible = UIVisible
-end)
-
--- Destroy UI button
-ArsenalKit:CreateButton(SettingsSection, "Destroy UI", function()
-    for _, conn in pairs(ArsenalKit.Connections) do
-        if typeof(conn) == "RBXScriptConnection" then conn:Disconnect() end
-    end
-    Gui:Destroy()
-    getgenv().ArsenalKit = nil
-    _G.ArsenalKit = nil
-end)
-
--- Reload modules button
-ArsenalKit:CreateButton(SettingsSection, "Reload Modules", function()
-    for _, conn in pairs(ArsenalKit.Connections) do
-        if typeof(conn) == "RBXScriptConnection" then conn:Disconnect() end
-    end
-    ArsenalKit.Connections = {}
-    ArsenalKit.Tabs = {}
-    ArsenalKit.Keybinds = {}
-    ArsenalKit.Features = {}
-    Gui:Destroy()
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/confessess/arsenal-script/main/loader.lua", true))()
-end)
-
--- Module info section
-local InfoSection = ArsenalKit:CreateSection(SettingsTab, "INFO", "Script information and credits.")
-
-local VersionLabel = Instance.new("TextLabel")
-VersionLabel.Size = UDim2.new(1, -28, 0, 20)
-VersionLabel.Position = UDim2.fromOffset(14, 0)
-VersionLabel.BackgroundTransparency = 1
-VersionLabel.Text = "Version: v2.3.0"
-VersionLabel.TextColor3 = Theme.White
-VersionLabel.Font = Enum.Font.Gotham
-VersionLabel.TextSize = 11
-VersionLabel.TextXAlignment = Enum.TextXAlignment.Left
-VersionLabel.ZIndex = 7
-VersionLabel.Parent = InfoSection
-
-local CreditLabel = Instance.new("TextLabel")
-CreditLabel.Size = UDim2.new(1, -28, 0, 20)
-CreditLabel.Position = UDim2.fromOffset(14, 22)
-CreditLabel.BackgroundTransparency = 1
-CreditLabel.Text = "Made by confessess"
-CreditLabel.TextColor3 = Theme.Muted
-CreditLabel.Font = Enum.Font.Gotham
-CreditLabel.TextSize = 10
-CreditLabel.TextXAlignment = Enum.TextXAlignment.Left
-CreditLabel.ZIndex = 7
-CreditLabel.Parent = InfoSection
-
---========================================================
 -- MODULE LOADING
 --========================================================
 
@@ -1256,17 +1181,143 @@ for _, moduleName in ipairs(ModuleList) do
             if func then
                 func()
                 LoadedCount = LoadedCount + 1
+                table.insert(ArsenalKit.LoadedModules, moduleName)
                 print("[ArsenalKit] Loaded module: " .. moduleName)
             else
                 warn("[ArsenalKit] Failed to compile: " .. moduleName)
+                ArsenalKit.ModuleErrors[moduleName] = "Compile failed"
             end
         else
             warn("[ArsenalKit] Empty source: " .. moduleName)
+            ArsenalKit.ModuleErrors[moduleName] = "Empty source"
         end
     end)
     if not success then
         warn("[ArsenalKit] Error loading " .. moduleName .. ": " .. tostring(err))
+        ArsenalKit.ModuleErrors[moduleName] = tostring(err)
     end
 end
+
+print("[ArsenalKit] Module loading complete — " .. LoadedCount .. "/" .. #ModuleList .. " loaded")
+
+--========================================================
+-- SETTINGS TAB (created AFTER modules, so it's last in the list)
+--========================================================
+
+local SettingsTab = ArsenalKit:CreateTab("Settings")
+local SettingsSection = ArsenalKit:CreateSection(SettingsTab, "UI SETTINGS", "Customize the ArsenalKit interface.")
+
+ArsenalKit:CreateKeybind(SettingsSection, "UI Toggle Key", Enum.KeyCode.RightShift, function()
+    UIVisible = not UIVisible
+    Main.Visible = UIVisible
+    OuterGlow.Visible = UIVisible
+    InnerGlow.Visible = UIVisible
+    Backdrop.Visible = UIVisible
+end)
+
+ArsenalKit:CreateButton(SettingsSection, "Destroy UI", function()
+    for _, conn in pairs(ArsenalKit.Connections) do
+        if typeof(conn) == "RBXScriptConnection" then conn:Disconnect() end
+    end
+    Gui:Destroy()
+    getgenv().ArsenalKit = nil
+    _G.ArsenalKit = nil
+end)
+
+ArsenalKit:CreateButton(SettingsSection, "Reload Modules", function()
+    for _, conn in pairs(ArsenalKit.Connections) do
+        if typeof(conn) == "RBXScriptConnection" then conn:Disconnect() end
+    end
+    ArsenalKit.Connections = {}
+    ArsenalKit.Tabs = {}
+    ArsenalKit.Keybinds = {}
+    ArsenalKit.Features = {}
+    Gui:Destroy()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/confessess/arsenal-script/main/loader.lua", true))()
+end)
+
+-- Debug / Module Status Section
+local DebugSection = ArsenalKit:CreateSection(SettingsTab, "MODULE STATUS", "Loaded modules and errors.")
+
+local StatusText = "Loaded: " .. LoadedCount .. "/" .. #ModuleList
+if LoadedCount > 0 then
+    StatusText = StatusText .. "\nModules: " .. table.concat(ArsenalKit.LoadedModules, ", ")
+end
+if next(ArsenalKit.ModuleErrors) then
+    StatusText = StatusText .. "\n\nErrors:"
+    for name, err in pairs(ArsenalKit.ModuleErrors) do
+        StatusText = StatusText .. "\n" .. name .. ": " .. err
+    end
+end
+
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(1, -28, 0, 0)
+StatusLabel.Position = UDim2.fromOffset(14, 0)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Text = StatusText
+StatusLabel.TextColor3 = Theme.Muted
+StatusLabel.Font = Enum.Font.Gotham
+StatusLabel.TextSize = 10
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatusLabel.TextYAlignment = Enum.TextYAlignment.Top
+StatusLabel.ZIndex = 7
+StatusLabel.Parent = DebugSection
+StatusLabel.AutomaticSize = Enum.AutomaticSize.Y
+
+-- Info Section
+local InfoSection = ArsenalKit:CreateSection(SettingsTab, "INFO", "Script information and credits.")
+
+local VersionLabel = Instance.new("TextLabel")
+VersionLabel.Size = UDim2.new(1, -28, 0, 20)
+VersionLabel.Position = UDim2.fromOffset(14, 0)
+VersionLabel.BackgroundTransparency = 1
+VersionLabel.Text = "Version: v2.4.0"
+VersionLabel.TextColor3 = Theme.White
+VersionLabel.Font = Enum.Font.Gotham
+VersionLabel.TextSize = 11
+VersionLabel.TextXAlignment = Enum.TextXAlignment.Left
+VersionLabel.ZIndex = 7
+VersionLabel.Parent = InfoSection
+
+local CreditLabel = Instance.new("TextLabel")
+CreditLabel.Size = UDim2.new(1, -28, 0, 20)
+CreditLabel.Position = UDim2.fromOffset(14, 22)
+CreditLabel.BackgroundTransparency = 1
+CreditLabel.Text = "Made by confessess"
+CreditLabel.TextColor3 = Theme.Muted
+CreditLabel.Font = Enum.Font.Gotham
+CreditLabel.TextSize = 10
+CreditLabel.TextXAlignment = Enum.TextXAlignment.Left
+CreditLabel.ZIndex = 7
+CreditLabel.Parent = InfoSection
+
+--========================================================
+-- AUTO-SWITCH TO FIRST MODULE TAB (not Settings)
+--========================================================
+
+task.delay(0.15, function()
+    if #ArsenalKit.Tabs > 1 then
+        -- Switch to first non-Settings tab
+        for _, tab in ipairs(ArsenalKit.Tabs) do
+            if tab.Name ~= "Settings" then
+                local success, err = pcall(function()
+                    ArsenalKit:SwitchTab(tab)
+                end)
+                if not success then
+                    warn("[ArsenalKit] Auto-switch error: " .. tostring(err))
+                end
+                break
+            end
+        end
+    elseif #ArsenalKit.Tabs == 1 then
+        -- Only Settings loaded, switch to it
+        local success, err = pcall(function()
+            ArsenalKit:SwitchTab(ArsenalKit.Tabs[1])
+        end)
+        if not success then
+            warn("[ArsenalKit] Auto-switch error: " .. tostring(err))
+        end
+    end
+end)
 
 print("[ArsenalKit] Loader initialized — " .. LoadedCount .. "/" .. #ModuleList .. " modules loaded")
